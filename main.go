@@ -10,8 +10,12 @@ import (
 	"grpctest/model/proto"
 	"grpctest/utils"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/hashicorp/consul/api"
+	"github.com/satori/go.uuid"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -40,6 +44,7 @@ func main() {
 			panic(err)
 		}
 		*Port=port
+		zap.S().Info("port:",*Port)
 	}
 	
 	server := grpc.NewServer()
@@ -71,16 +76,31 @@ func main() {
 	//生成注册对象
 	registration:=new(api.AgentServiceRegistration)
 	registration.Name=global.ServerConfig.Name//服务名称（如 "user-web"）。
-	registration.ID=global.ServerConfig.Name//服务实例唯一标识（如 "user-web"，如果部署多个副本，每个副本需要不同 ID）。
+	serviceID:=fmt.Sprintf("%s",uuid.NewV4())
+	registration.ID=serviceID//global.ServerConfig.Name 服务实例唯一标识（如 "user-web"，如果部署多个副本，每个副本需要不同 ID）。
 	registration.Port=*Port//服务监听的端口号（如 8021）
 	registration.Tags=[]string{"mxshop","boddy","imooc","user","srv"}//服务标签，用于分类或标记服务（如 ["mxshop", "boddy"]）。
 	registration.Address="192.168.11.120"//服务所在主机的 IP 地址,会被web层拿到做服务发现，consul自己来做检查的
 	registration.Check=check
+
+	//1. 如何启动两个服务
+	//2. 即使我能够通过终端启动两个服务，但是注册到consul中的时候也会被覆盖
+
 	if err := client.Agent().ServiceRegister(registration); err != nil {
     zap.S().Fatalf("register service to consul failed: %v", err)
 }
-	err=server.Serve(lis)
-	if err!=nil{
-		panic("failed to start grpc:"+err.Error()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          )
+	go func ()  {
+		if err=server.Serve(lis);err!=nil{
+			panic("failed to start grpc:"+err.Error())
+		}
+	}()
+
+	//接受终止信号
+	quit:=make(chan os.Signal)
+	signal.Notify(quit,syscall.SIGINT,syscall.SIGTERM)
+	<-quit
+	if err=client.Agent().ServiceDeregister(serviceID);err!=nil{
+		zap.S().Fatalf("deregister service from consul failed: %v", err)
 	}
+	zap.S().Info("service deregistered")
 }

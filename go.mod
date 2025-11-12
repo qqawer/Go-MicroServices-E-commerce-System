@@ -4,6 +4,8 @@ go 1.22.9
 
 require (
 	github.com/fsnotify/fsnotify v1.8.0
+	github.com/hashicorp/consul/api v1.27.0
+	github.com/satori/go.uuid v1.2.0
 	golang.org/x/crypto v0.32.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.6
@@ -15,7 +17,6 @@ require (
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/fatih/color v1.14.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
-	github.com/hashicorp/consul/api v1.27.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.5.0 // indirect
