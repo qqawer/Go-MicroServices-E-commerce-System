@@ -2,7 +2,7 @@ package global
 
 import (
 	// model "grpctest/model/user"
-	"grpctest/config"
+	"grpctest/user_srv/config"
 	// "log"
 	// "os"
 	// "time"

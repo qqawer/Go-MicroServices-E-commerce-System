@@ -2,10 +2,10 @@ package handler
 
 import (
 	"context"
-	"grpctest/global"
-	"grpctest/model/proto"
-	model "grpctest/model/user"
-	"grpctest/utils"
+	"grpctest/user_srv/global"
+	"grpctest/user_srv/model/proto"
+	model "grpctest/user_srv/model/user"
+	"grpctest/user_srv/utils"
 	"time"
 
 	"google.golang.org/grpc/codes"

@@ -2,7 +2,7 @@ package initialize
 
 import (
 	"fmt"
-	"grpctest/global"
+	"grpctest/user_srv/global"
 	// model "grpctest/model/user"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
 
 	"log"

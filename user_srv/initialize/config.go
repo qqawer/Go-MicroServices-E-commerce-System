@@ -3,7 +3,7 @@ package initialize
 import (
 	"encoding/json"
 	"fmt"
-	"grpctest/global"
+	"grpctest/user_srv/global"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
@@ -21,9 +21,9 @@ func InitConfig() {
 	//从配置文件中读取出对应的配置
 	debug := GetEnvInfo("MXSHOP_DEBUG")
 	configFilePrefix:="config"
-	configFileName:=fmt.Sprintf("../grpctest/%s-pro.yaml",configFilePrefix)
+	configFileName:=fmt.Sprintf("../user_srv/%s-pro.yaml",configFilePrefix)
 	if debug{
-		configFileName=fmt.Sprintf("../grpctest/%s-debug.yaml",configFilePrefix)
+		configFileName=fmt.Sprintf("../user_srv/%s-debug.yaml",configFilePrefix)
 	}
 	v:=viper.New()
 	v.SetConfigFile(configFileName)

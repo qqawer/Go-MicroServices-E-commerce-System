@@ -1,0 +1,174 @@
+2025-11-19T22:59:26.055+0800	WARN	cache/disk_cache.go:193	read Config Content failed. cause file doesn't exist, file path: ./tmp/nacos/cache\config\user-srv.json@@dev@@b8cbecc7-537f-4507-b2d2-3e18dbd787c1_failover.
+2025-11-19T22:59:26.083+0800	INFO	rpc/rpc_client.go:157	init rpc client for name %!(EXTRA string=config-0-e8faf67d-cad1-4de8-ac6e-153224fcf367)
+2025-11-19T22:59:26.083+0800	INFO	rpc/rpc_client.go:166	get app conn labels from client config map[] 
+2025-11-19T22:59:26.083+0800	INFO	rpc/rpc_client.go:168	get app conn labels from env map[] 
+2025-11-19T22:59:26.083+0800	INFO	rpc/rpc_client.go:171	final app conn labels : map[] 
+2025-11-19T22:59:26.084+0800	DEBUG	rpc/rpc_client.go:394	config-0-e8faf67d-cad1-4de8-ac6e-153224fcf367 register server push request:ConfigChangeNotifyRequest handler:ConfigChangeNotifyRequestHandler
+2025-11-19T22:59:26.084+0800	DEBUG	rpc/rpc_client.go:402	config-0-e8faf67d-cad1-4de8-ac6e-153224fcf367 register connection listener [*config_client.ConfigConnectionEventListener] to current client
+2025-11-19T22:59:26.084+0800	DEBUG	rpc/rpc_client.go:394	config-0-e8faf67d-cad1-4de8-ac6e-153224fcf367 register server push request:ConnectResetRequest handler:ConnectResetRequestHandler
+2025-11-19T22:59:26.084+0800	DEBUG	rpc/rpc_client.go:394	config-0-e8faf67d-cad1-4de8-ac6e-153224fcf367 register server push request:ClientDetectionRequest handler:ClientDetectionRequestHandler
+2025-11-19T22:59:26.084+0800	INFO	rpc/rpc_client.go:327	[RpcClient.Start] config-0-e8faf67d-cad1-4de8-ac6e-153224fcf367 try to connect to server on start up, server: {serverIp:192.168.11.210 serverPort:8848 serverGrpcPort:9848}
+2025-11-19T22:59:26.084+0800	INFO	rpc/grpc_client.go:175	check tls config %!(EXTRA *constant.TLSConfig=&{false false false    })
+2025-11-19T22:59:26.084+0800	INFO	rpc/grpc_client.go:180	try to get tls config from env
+2025-11-19T22:59:26.084+0800	INFO	rpc/grpc_client.go:189	 tls config from env is not enable
+2025-11-19T22:59:26.131+0800	INFO	util/common.go:96	Local IP:192.168.11.120
+2025-11-19T22:59:29.098+0800	WARN	rpc/rpc_client.go:329	[RpcClient.Start] config-0-e8faf67d-cad1-4de8-ac6e-153224fcf367 fail to connect to server on start up, error message=server check request failed , err:rpc error: code = DeadlineExceeded desc = context deadline exceeded while waiting for connections to become ready, start up retry times left=2
+2025-11-19T22:59:29.098+0800	INFO	rpc/rpc_client.go:327	[RpcClient.Start] config-0-e8faf67d-cad1-4de8-ac6e-153224fcf367 try to connect to server on start up, server: {serverIp:192.168.11.210 serverPort:8848 serverGrpcPort:9848}
+2025-11-19T22:59:29.098+0800	INFO	rpc/grpc_client.go:175	check tls config %!(EXTRA *constant.TLSConfig=&{false false false    })
+2025-11-19T22:59:29.098+0800	INFO	rpc/grpc_client.go:180	try to get tls config from env
+2025-11-19T22:59:29.098+0800	INFO	rpc/grpc_client.go:189	 tls config from env is not enable
+2025-11-19T22:59:32.106+0800	WARN	rpc/rpc_client.go:329	[RpcClient.Start] config-0-e8faf67d-cad1-4de8-ac6e-153224fcf367 fail to connect to server on start up, error message=server check request failed , err:rpc error: code = DeadlineExceeded desc = context deadline exceeded while waiting for connections to become ready, start up retry times left=1
+2025-11-19T22:59:32.106+0800	INFO	rpc/rpc_client.go:327	[RpcClient.Start] config-0-e8faf67d-cad1-4de8-ac6e-153224fcf367 try to connect to server on start up, server: {serverIp:192.168.11.210 serverPort:8848 serverGrpcPort:9848}
+2025-11-19T22:59:32.106+0800	INFO	rpc/grpc_client.go:175	check tls config %!(EXTRA *constant.TLSConfig=&{false false false    })
+2025-11-19T22:59:32.106+0800	INFO	rpc/grpc_client.go:180	try to get tls config from env
+2025-11-19T22:59:32.106+0800	INFO	rpc/grpc_client.go:189	 tls config from env is not enable
+2025-11-19T22:59:35.110+0800	WARN	rpc/rpc_client.go:329	[RpcClient.Start] config-0-e8faf67d-cad1-4de8-ac6e-153224fcf367 fail to connect to server on start up, error message=server check request failed , err:rpc error: code = DeadlineExceeded desc = context deadline exceeded while waiting for connections to become ready, start up retry times left=0
+2025-11-19T22:59:35.110+0800	INFO	rpc/rpc_client.go:427	config-0-e8faf67d-cad1-4de8-ac6e-153224fcf367 try to re connect to a new server, server is not appointed, will choose a random server.
+2025-11-19T22:59:35.110+0800	INFO	rpc/grpc_client.go:175	check tls config %!(EXTRA *constant.TLSConfig=&{false false false    })
+2025-11-19T22:59:35.111+0800	INFO	rpc/grpc_client.go:180	try to get tls config from env
+2025-11-19T22:59:35.110+0800	ERROR	rpc/rpc_client.go:630	Send request fail, request=ConfigQueryRequest, body={"requestId":"","group":"dev","dataId":"user-srv.json","tenant":"b8cbecc7-537f-4507-b2d2-3e18dbd787c1","module":"config","tag":""}, retryTimes=0, error=client not connected, current status:STARTING
+github.com/nacos-group/nacos-sdk-go/v2/common/remote/rpc.(*RpcClient).Request
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/common/remote/rpc/rpc_client.go:592
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigProxy).requestProxy
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_proxy.go:63
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigProxy).queryConfig
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_proxy.go:128
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigClient).getConfigInner
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_client.go:198
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigClient).GetConfig
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_client.go:166
+grpctest/user_srv/initialize.InitConfig
+	E:/Programming/grpc_prac/grpctest/user_srv/initialize/config.go:60
+main.main
+	E:/Programming/grpc_prac/grpctest/user_srv/main.go:31
+runtime.main
+	D:/Program Files/Go/src/runtime/proc.go:271
+runtime.goexit
+	D:/Program Files/Go/src/runtime/asm_amd64.s:1695
+2025-11-19T22:59:35.111+0800	INFO	rpc/grpc_client.go:189	 tls config from env is not enable
+2025-11-19T22:59:35.218+0800	ERROR	rpc/rpc_client.go:630	Send request fail, request=ConfigQueryRequest, body={"requestId":"","group":"dev","dataId":"user-srv.json","tenant":"b8cbecc7-537f-4507-b2d2-3e18dbd787c1","module":"config","tag":""}, retryTimes=1, error=client not connected, current status:STARTING
+github.com/nacos-group/nacos-sdk-go/v2/common/remote/rpc.(*RpcClient).Request
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/common/remote/rpc/rpc_client.go:592
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigProxy).requestProxy
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_proxy.go:63
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigProxy).queryConfig
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_proxy.go:128
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigClient).getConfigInner
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_client.go:198
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigClient).GetConfig
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_client.go:166
+grpctest/user_srv/initialize.InitConfig
+	E:/Programming/grpc_prac/grpctest/user_srv/initialize/config.go:60
+main.main
+	E:/Programming/grpc_prac/grpctest/user_srv/main.go:31
+runtime.main
+	D:/Program Files/Go/src/runtime/proc.go:271
+runtime.goexit
+	D:/Program Files/Go/src/runtime/asm_amd64.s:1695
+2025-11-19T22:59:35.327+0800	ERROR	rpc/rpc_client.go:630	Send request fail, request=ConfigQueryRequest, body={"requestId":"","group":"dev","dataId":"user-srv.json","tenant":"b8cbecc7-537f-4507-b2d2-3e18dbd787c1","module":"config","tag":""}, retryTimes=2, error=client not connected, current status:STARTING
+github.com/nacos-group/nacos-sdk-go/v2/common/remote/rpc.(*RpcClient).Request
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/common/remote/rpc/rpc_client.go:592
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigProxy).requestProxy
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_proxy.go:63
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigProxy).queryConfig
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_proxy.go:128
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigClient).getConfigInner
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_client.go:198
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigClient).GetConfig
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_client.go:166
+grpctest/user_srv/initialize.InitConfig
+	E:/Programming/grpc_prac/grpctest/user_srv/initialize/config.go:60
+main.main
+	E:/Programming/grpc_prac/grpctest/user_srv/main.go:31
+runtime.main
+	D:/Program Files/Go/src/runtime/proc.go:271
+runtime.goexit
+	D:/Program Files/Go/src/runtime/asm_amd64.s:1695
+2025-11-19T22:59:35.436+0800	ERROR	config_client/config_client.go:201	get config from server error:client not connected, current status:STARTING, dataId=user-srv.json, group=dev, namespaceId=b8cbecc7-537f-4507-b2d2-3e18dbd787c1
+2025-11-19T23:00:05.939+0800	WARN	cache/disk_cache.go:193	read Config Content failed. cause file doesn't exist, file path: ./tmp/nacos/cache\config\user-srv.json@@dev@@b8cbecc7-537f-4507-b2d2-3e18dbd787c1_failover.
+2025-11-19T23:00:05.956+0800	INFO	rpc/rpc_client.go:157	init rpc client for name %!(EXTRA string=config-0-16c3c53b-c7a9-4fb0-bde4-d7fa7ba2d2ad)
+2025-11-19T23:00:05.956+0800	INFO	rpc/rpc_client.go:166	get app conn labels from client config map[] 
+2025-11-19T23:00:05.956+0800	INFO	rpc/rpc_client.go:168	get app conn labels from env map[] 
+2025-11-19T23:00:05.956+0800	INFO	rpc/rpc_client.go:171	final app conn labels : map[] 
+2025-11-19T23:00:05.956+0800	DEBUG	rpc/rpc_client.go:394	config-0-16c3c53b-c7a9-4fb0-bde4-d7fa7ba2d2ad register server push request:ConfigChangeNotifyRequest handler:ConfigChangeNotifyRequestHandler
+2025-11-19T23:00:05.956+0800	DEBUG	rpc/rpc_client.go:402	config-0-16c3c53b-c7a9-4fb0-bde4-d7fa7ba2d2ad register connection listener [*config_client.ConfigConnectionEventListener] to current client
+2025-11-19T23:00:05.956+0800	DEBUG	rpc/rpc_client.go:394	config-0-16c3c53b-c7a9-4fb0-bde4-d7fa7ba2d2ad register server push request:ConnectResetRequest handler:ConnectResetRequestHandler
+2025-11-19T23:00:05.956+0800	DEBUG	rpc/rpc_client.go:394	config-0-16c3c53b-c7a9-4fb0-bde4-d7fa7ba2d2ad register server push request:ClientDetectionRequest handler:ClientDetectionRequestHandler
+2025-11-19T23:00:05.956+0800	INFO	rpc/rpc_client.go:327	[RpcClient.Start] config-0-16c3c53b-c7a9-4fb0-bde4-d7fa7ba2d2ad try to connect to server on start up, server: {serverIp:192.168.11.210 serverPort:8848 serverGrpcPort:9848}
+2025-11-19T23:00:05.956+0800	INFO	rpc/grpc_client.go:175	check tls config %!(EXTRA *constant.TLSConfig=&{false false false    })
+2025-11-19T23:00:05.956+0800	INFO	rpc/grpc_client.go:180	try to get tls config from env
+2025-11-19T23:00:05.956+0800	INFO	rpc/grpc_client.go:189	 tls config from env is not enable
+2025-11-19T23:00:06.005+0800	INFO	util/common.go:96	Local IP:192.168.11.120
+2025-11-19T23:00:08.965+0800	WARN	rpc/rpc_client.go:329	[RpcClient.Start] config-0-16c3c53b-c7a9-4fb0-bde4-d7fa7ba2d2ad fail to connect to server on start up, error message=server check request failed , err:rpc error: code = DeadlineExceeded desc = context deadline exceeded while waiting for connections to become ready, start up retry times left=2
+2025-11-19T23:00:08.965+0800	INFO	rpc/rpc_client.go:327	[RpcClient.Start] config-0-16c3c53b-c7a9-4fb0-bde4-d7fa7ba2d2ad try to connect to server on start up, server: {serverIp:192.168.11.210 serverPort:8848 serverGrpcPort:9848}
+2025-11-19T23:00:08.965+0800	INFO	rpc/grpc_client.go:175	check tls config %!(EXTRA *constant.TLSConfig=&{false false false    })
+2025-11-19T23:00:08.965+0800	INFO	rpc/grpc_client.go:180	try to get tls config from env
+2025-11-19T23:00:08.965+0800	INFO	rpc/grpc_client.go:189	 tls config from env is not enable
+2025-11-19T23:00:11.978+0800	WARN	rpc/rpc_client.go:329	[RpcClient.Start] config-0-16c3c53b-c7a9-4fb0-bde4-d7fa7ba2d2ad fail to connect to server on start up, error message=server check request failed , err:rpc error: code = DeadlineExceeded desc = context deadline exceeded while waiting for connections to become ready, start up retry times left=1
+2025-11-19T23:00:11.978+0800	INFO	rpc/rpc_client.go:327	[RpcClient.Start] config-0-16c3c53b-c7a9-4fb0-bde4-d7fa7ba2d2ad try to connect to server on start up, server: {serverIp:192.168.11.210 serverPort:8848 serverGrpcPort:9848}
+2025-11-19T23:00:11.978+0800	INFO	rpc/grpc_client.go:175	check tls config %!(EXTRA *constant.TLSConfig=&{false false false    })
+2025-11-19T23:00:11.978+0800	INFO	rpc/grpc_client.go:180	try to get tls config from env
+2025-11-19T23:00:11.978+0800	INFO	rpc/grpc_client.go:189	 tls config from env is not enable
+2025-11-19T23:00:14.987+0800	WARN	rpc/rpc_client.go:329	[RpcClient.Start] config-0-16c3c53b-c7a9-4fb0-bde4-d7fa7ba2d2ad fail to connect to server on start up, error message=server check request failed , err:rpc error: code = DeadlineExceeded desc = context deadline exceeded while waiting for connections to become ready, start up retry times left=0
+2025-11-19T23:00:14.987+0800	INFO	rpc/rpc_client.go:427	config-0-16c3c53b-c7a9-4fb0-bde4-d7fa7ba2d2ad try to re connect to a new server, server is not appointed, will choose a random server.
+2025-11-19T23:00:14.987+0800	INFO	rpc/grpc_client.go:175	check tls config %!(EXTRA *constant.TLSConfig=&{false false false    })
+2025-11-19T23:00:14.987+0800	INFO	rpc/grpc_client.go:180	try to get tls config from env
+2025-11-19T23:00:14.987+0800	ERROR	rpc/rpc_client.go:630	Send request fail, request=ConfigQueryRequest, body={"requestId":"","group":"dev","dataId":"user-srv.json","tenant":"b8cbecc7-537f-4507-b2d2-3e18dbd787c1","module":"config","tag":""}, retryTimes=0, error=client not connected, current status:STARTING
+github.com/nacos-group/nacos-sdk-go/v2/common/remote/rpc.(*RpcClient).Request
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/common/remote/rpc/rpc_client.go:592
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigProxy).requestProxy
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_proxy.go:63
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigProxy).queryConfig
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_proxy.go:128
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigClient).getConfigInner
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_client.go:198
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigClient).GetConfig
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_client.go:166
+grpctest/user_srv/initialize.InitConfig
+	E:/Programming/grpc_prac/grpctest/user_srv/initialize/config.go:60
+main.main
+	E:/Programming/grpc_prac/grpctest/user_srv/main.go:31
+runtime.main
+	D:/Program Files/Go/src/runtime/proc.go:271
+runtime.goexit
+	D:/Program Files/Go/src/runtime/asm_amd64.s:1695
+2025-11-19T23:00:14.987+0800	INFO	rpc/grpc_client.go:189	 tls config from env is not enable
+2025-11-19T23:00:15.095+0800	ERROR	rpc/rpc_client.go:630	Send request fail, request=ConfigQueryRequest, body={"requestId":"","group":"dev","dataId":"user-srv.json","tenant":"b8cbecc7-537f-4507-b2d2-3e18dbd787c1","module":"config","tag":""}, retryTimes=1, error=client not connected, current status:STARTING
+github.com/nacos-group/nacos-sdk-go/v2/common/remote/rpc.(*RpcClient).Request
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/common/remote/rpc/rpc_client.go:592
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigProxy).requestProxy
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_proxy.go:63
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigProxy).queryConfig
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_proxy.go:128
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigClient).getConfigInner
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_client.go:198
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigClient).GetConfig
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_client.go:166
+grpctest/user_srv/initialize.InitConfig
+	E:/Programming/grpc_prac/grpctest/user_srv/initialize/config.go:60
+main.main
+	E:/Programming/grpc_prac/grpctest/user_srv/main.go:31
+runtime.main
+	D:/Program Files/Go/src/runtime/proc.go:271
+runtime.goexit
+	D:/Program Files/Go/src/runtime/asm_amd64.s:1695
+2025-11-19T23:00:15.205+0800	ERROR	rpc/rpc_client.go:630	Send request fail, request=ConfigQueryRequest, body={"requestId":"","group":"dev","dataId":"user-srv.json","tenant":"b8cbecc7-537f-4507-b2d2-3e18dbd787c1","module":"config","tag":""}, retryTimes=2, error=client not connected, current status:STARTING
+github.com/nacos-group/nacos-sdk-go/v2/common/remote/rpc.(*RpcClient).Request
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/common/remote/rpc/rpc_client.go:592
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigProxy).requestProxy
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_proxy.go:63
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigProxy).queryConfig
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_proxy.go:128
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigClient).getConfigInner
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_client.go:198
+github.com/nacos-group/nacos-sdk-go/v2/clients/config_client.(*ConfigClient).GetConfig
+	D:/go/pkg/mod/github.com/nacos-group/nacos-sdk-go/v2@v2.3.5/clients/config_client/config_client.go:166
+grpctest/user_srv/initialize.InitConfig
+	E:/Programming/grpc_prac/grpctest/user_srv/initialize/config.go:60
+main.main
+	E:/Programming/grpc_prac/grpctest/user_srv/main.go:31
+runtime.main
+	D:/Program Files/Go/src/runtime/proc.go:271
+runtime.goexit
+	D:/Program Files/Go/src/runtime/asm_amd64.s:1695
+2025-11-19T23:00:15.315+0800	ERROR	config_client/config_client.go:201	get config from server error:client not connected, current status:STARTING, dataId=user-srv.json, group=dev, namespaceId=b8cbecc7-537f-4507-b2d2-3e18dbd787c1
