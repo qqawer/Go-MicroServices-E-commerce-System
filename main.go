@@ -15,7 +15,7 @@ import (
 	"syscall"
 
 	"github.com/hashicorp/consul/api"
-	"github.com/satori/go.uuid"
+	// "github.com/satori/go.uuid"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -76,8 +76,9 @@ func main() {
 	//生成注册对象
 	registration:=new(api.AgentServiceRegistration)
 	registration.Name=global.ServerConfig.Name//服务名称（如 "user-web"）。
-	serviceID:=fmt.Sprintf("%s",uuid.NewV4())
-	registration.ID=serviceID//global.ServerConfig.Name 服务实例唯一标识（如 "user-web"，如果部署多个副本，每个副本需要不同 ID）。
+	// serviceID:=fmt.Sprintf("%s",uuid.NewV4())
+	//registration.ID=serviceID//global.ServerConfig.Name 服务实例唯一标识（如 "user-web"，如果部署多个副本，每个副本需要不同 ID）。
+	registration.ID=global.ServerConfig.Name//global.ServerConfig.Name 服务实例唯一标识（如 "user-web"，如果部署多个副本，每个副本需要不同 ID）。
 	registration.Port=*Port//服务监听的端口号（如 8021）
 	registration.Tags=[]string{"mxshop","boddy","imooc","user","srv"}//服务标签，用于分类或标记服务（如 ["mxshop", "boddy"]）。
 	registration.Address="192.168.11.120"//服务所在主机的 IP 地址,会被web层拿到做服务发现，consul自己来做检查的
@@ -99,7 +100,7 @@ func main() {
 	quit:=make(chan os.Signal)
 	signal.Notify(quit,syscall.SIGINT,syscall.SIGTERM)
 	<-quit
-	if err=client.Agent().ServiceDeregister(serviceID);err!=nil{
+	if err=client.Agent().ServiceDeregister(global.ServerConfig.Name);err!=nil{
 		zap.S().Fatalf("deregister service from consul failed: %v", err)
 	}
 	zap.S().Info("service deregistered")

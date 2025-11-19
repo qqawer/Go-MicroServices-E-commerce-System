@@ -1,12 +1,19 @@
-name: 'user-srv'
-mysql:
-  host: 192.168.11.210
-  port: 3306
-  user: root
-  password: 123456
-  name: 'grpctest'
+# name: 'user-srv'
+# mysql:
+#   host: 192.168.11.210
+#   port: 3306
+#   user: root
+#   password: 123456
+#   name: 'grpctest'
 
-consul:
-  host: 192.168.11.210
-  port: 8500
+# consul:
+#   host: 192.168.11.210
+#   port: 8500
 
+host: '192.168.11.210'
+port: 8848
+namespace: 'b8cbecc7-537f-4507-b2d2-3e18dbd787c1'
+user: 'nacos'
+password: 'nacos'
+dataid: 'user-srv.json'
+group: 'dev'
