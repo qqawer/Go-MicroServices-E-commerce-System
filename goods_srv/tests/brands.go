@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var goodsClient proto.GoodsClient
+var brandClient proto.GoodsClient
 var conn *grpc.ClientConn
 
 
@@ -24,47 +24,27 @@ func Init() {
 	}
 	// defer conn.Close()
 
-	userClient = proto.NewUserClient(conn)
+	brandClient = proto.NewGoodsClient(conn)
 	
 }
-func TestGetUserList(){
-	rsp,err:=userClient.GetUserList(context.Background(),&proto.PageInfo{
-		Pn:1,
-		PSize:5,
+func TestGetBrandList(){
+	rsp,err:=brandClient.BrandList(context.Background(),&proto.BrandFilterRequest{
+		Pages:1,
+		PagePerNums:5,
 	})
 	if err!= nil{
 		panic(err)
 	}
-	for _,user :=range rsp.Data{
-		fmt.Println(user.Mobile,user.NickName,user.Password)
-		CheckRsp,err:=userClient.CheckPassWord(context.Background(),&proto.PasswordCheckInfo{
-			Password: "admin123",
-			EncryptedPassword: user.Password,
-		})
-		if err!=nil{
-			fmt.Println(CheckRsp.Success)
-		}
+	fmt.Println(rsp.Total)
+	for _,brand :=range rsp.Data{
+		fmt.Println(brand.Name)
 	}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
 }
 
-func TestCreateUser(){
-	for i:=0;i<10;i++{
-		rsp,err:=userClient.CreateUser(context.Background(),&proto.CreateUserInfo{
-			NickName:fmt.Sprintf("bobby%d", i),
-			PassWord: "admin123",
-			Mobile: fmt.Sprintf("1878222222%d",i),
-		})
 
-		if err!=nil{
-			panic(err)
-		}
-		fmt.Println(rsp.Id)
-	}
-	
-}
 func main() {
 	Init()
-	// TestCreateUser()
-	TestGetUserList()
+
+	TestGetBrandList()
 	conn.Close()
 }
