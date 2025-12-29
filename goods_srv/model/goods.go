@@ -3,11 +3,12 @@ package model
 
 type Category struct {
 	BaseModel
-	Name string `gorm:"column:name;type:varchar(20)"`
-	ParentCategoryID int32
-	ParentCategory *Category
-	Level int32 `gorm:"column:level; type:int;not null;default:1"`
-	isTab bool `gorm:"column:is_tab; not null;default:false"`
+	Name string `gorm:"column:name;type:varchar(20)" json:"name"`
+	ParentCategoryID int32 `json:"parent"`
+	ParentCategory *Category `json:"-"`
+	SubCategory []*Category `gorm:"foreignKey:ParentCategoryID;references:ID" json:"sub_category"`
+	Level int32 `gorm:"column:level; type:int;not null;default:1" json:"level"`
+	IsTab bool `gorm:"column:is_tab; not null;default:false" json:"is_tab"`
 }
 
 type Brands struct{
@@ -20,8 +21,8 @@ type GoodsCategoryBrand struct{
 	BaseModel
 	CategoryID int32 `gorm:"type:int;index:idx_category_brand,unique"`
 	Category *Category
-	BrandID int32 `gorm:"type:int;index:idx_category_brand,unique"`
-	Brand *Brands
+	BrandsID int32 `gorm:"type:int;index:idx_category_brand,unique"`
+	Brands *Brands
 }
 
 type Banner struct{
@@ -36,8 +37,8 @@ type Goods struct{
 
 	CategoryID int32 `gorm:"type:int;not null"`
 	Category *Category
-	BrandID int32 `gorm:"type:int;not null"`
-	Brand *Brands
+	BrandsID int32 `gorm:"type:int;not null"`
+	Brands *Brands
 
 	
 	onSale bool `gorm:"type:bool;not null;default:false;comment:'是否上架'"`
