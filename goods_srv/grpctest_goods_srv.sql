@@ -571,7 +571,7 @@ CREATE TABLE `goods`  (
   `is_deleted` tinyint(1) NULL DEFAULT NULL,
   `update_time` datetime(0) NOT NULL,
   `category_id` int(11) NOT NULL,
-  `brand_id` int(11) NOT NULL,
+  `brands_id` int(11) NOT NULL,
   `on_sale` tinyint(1) NOT NULL,
   `goods_sn` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
@@ -591,9 +591,9 @@ CREATE TABLE `goods`  (
   `deleted_at` datetime(3) NULL DEFAULT NULL,
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `goods2_category_id`(`category_id`) USING BTREE,
-  INDEX `goods2_brand_id`(`brand_id`) USING BTREE,
+  INDEX `goods2_brands_id`(`brands_id`) USING BTREE,
   CONSTRAINT `goods_ibfk_1` FOREIGN KEY (`category_id`) REFERENCES `category` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
-  CONSTRAINT `goods_ibfk_2` FOREIGN KEY (`brand_id`) REFERENCES `brands` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+  CONSTRAINT `goods_ibfk_2` FOREIGN KEY (`brands_id`) REFERENCES `brands` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
 ) ENGINE = InnoDB AUTO_INCREMENT = 841 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -1027,17 +1027,17 @@ DROP TABLE IF EXISTS `goods_category_brand`;
 CREATE TABLE `goods_category_brand`  (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `category_id` int(11) NOT NULL,
-  `brand_id` int(11) NOT NULL,
+  `brands_id` int(11) NOT NULL,
   `add_time` datetime(0) NOT NULL,
   `is_deleted` tinyint(1) NULL DEFAULT NULL,
   `update_time` datetime(0) NOT NULL,
   `deleted_at` datetime(3) NULL DEFAULT NULL,
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `goodscategorybrand_category_id_brand_id`(`category_id`, `brand_id`) USING BTREE,
+  UNIQUE INDEX `goodscategorybrand_category_id_brands_id`(`category_id`, `brands_id`) USING BTREE,
   INDEX `goodscategorybrand_category_id`(`category_id`) USING BTREE,
-  INDEX `goodscategorybrand_brand_id`(`brand_id`) USING BTREE,
+  INDEX `goodscategorybrand_brands_id`(`brands_id`) USING BTREE,
   CONSTRAINT `goods_category_brand_ibfk_1` FOREIGN KEY (`category_id`) REFERENCES `category` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT `goods_category_brand_ibfk_2` FOREIGN KEY (`brand_id`) REFERENCES `brands` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+  CONSTRAINT `goods_category_brand_ibfk_2` FOREIGN KEY (`brands_id`) REFERENCES `brands` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE = InnoDB AUTO_INCREMENT = 25799 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
