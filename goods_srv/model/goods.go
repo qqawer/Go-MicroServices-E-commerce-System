@@ -20,9 +20,9 @@ type Brands struct{
 type GoodsCategoryBrand struct{
 	BaseModel
 	CategoryID int32 `gorm:"type:int;index:idx_category_brand,unique"`
-	Category *Category
+	Category Category
 	BrandsID int32 `gorm:"type:int;index:idx_category_brand,unique"`
-	Brands *Brands
+	Brands Brands
 }
 
 type Banner struct{
@@ -36,13 +36,13 @@ type Goods struct{
 	BaseModel
 
 	CategoryID int32 `gorm:"type:int;not null"`
-	Category *Category
+	Category Category
 	BrandsID int32 `gorm:"type:int;not null"`
-	Brands *Brands
+	Brands Brands
 
 	
-	onSale bool `gorm:"type:bool;not null;default:false;comment:'是否上架'"`
-	ShipFee bool `gorm:"type:bool;not null;default:false;comment:'是否包邮'"`
+	OnSale bool `gorm:"type:bool;not null;default:false;comment:'是否上架'"`
+	ShipFree bool `gorm:"type:bool;not null;default:false;comment:'是否包邮'"`
 	IsNew bool `gorm:"type:bool;not null;default:false;comment:'是否新品'"`
 	IsHot bool `gorm:"type:bool;not null;default:false;comment:'是否热门'"`
 
@@ -52,9 +52,9 @@ type Goods struct{
 	ClickNum int32 `gorm:"type:int;not null;default:0;comment:'点击量'"`
 	SoldNum int32 `gorm:"type:int;not null;default:0;comment:'销售量'"`
 	FavNum int32 `gorm:"type:int;not null;default:0;comment:'收藏量'"`
-	MarkerPrice float32 `gorm:"not null;comment:'活动价格'"`
+	MarketPrice float32 `gorm:"not null;comment:'活动价格'"`
 	ShopPrice float32 `gorm:"not null;comment:'平时价格'"`
-	GoodBrief string `gorm:"type:varchar(100);not null;comment:'商品简介'"`
+	GoodsBrief string `gorm:"type:varchar(100);not null;comment:'商品简介'"`
 	Images GormList `gorm:"type:varchar(1000);not null;comment:'商品图片'"`
 	DescImages GormList `gorm:"type:varchar(1000);not null;comment:'商品详情图片'"`
 	GoodsFrontImage string `gorm:"type:varchar(200);not null;comment:'商品封面图片'"`
