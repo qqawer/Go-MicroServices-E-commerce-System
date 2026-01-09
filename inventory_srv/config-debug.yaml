@@ -1,0 +1,19 @@
+# name: 'user-srv'
+# mysql:
+#   host: 192.168.11.210
+#   port: 3306
+#   user: root
+#   password: 123456
+#   name: 'grpctest'
+
+# consul:
+#   host: 192.168.11.210
+#   port: 8500
+
+host: '192.168.11.210'
+port: 8848
+namespace: 'e2f59a3b-5bcc-470b-ad61-8b2f0264525b'
+user: 'nacos'
+password: 'nacos'
+dataid: 'inventory-srv.json'
+group: 'dev'
