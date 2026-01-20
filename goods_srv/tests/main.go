@@ -23,7 +23,8 @@ func main() {
 	// TestCreateBrand()  // 新增品牌（按需启用）
 	// TestUpdateBrand()  // 更新品牌（按需启用）
 	// TestDeleteBrand(1087)  // 删除品牌（谨慎启用，传参指定ID）
-	TestGetCategoryBrandList()
+	//TestGetCategoryBrandList()
+	TestGetCategoryAllList()
 	// 4. 等待退出信号（避免程序执行完直接退出，方便看日志）
 	log.Println("\n===== 测试执行完成，按 Ctrl+C 退出 =====")
 	<-sigCh
