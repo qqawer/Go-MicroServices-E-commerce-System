@@ -20,7 +20,9 @@ import (
 )
 
 //InventoryServer 库存服务
-type InventoryServer struct{}
+type InventoryServer struct{
+	proto.UnimplementedInventoryServer
+}
 
 //SetInv 设置库存或者库存更新
 func (i *InventoryServer) SetInv(c context.Context, req *proto.GoodsInventoryInfo) (*empty.Empty, error) {

@@ -8,6 +8,7 @@ import (
 	// "time"
 
 	// "gorm.io/driver/mysql"
+	"github.com/go-redsync/redsync/v4"
 	"gorm.io/gorm"
 	// "gorm.io/gorm/logger"
 	// "gorm.io/gorm/schema"
@@ -16,7 +17,7 @@ var (
 	DB *gorm.DB
 	ServerConfig *config.ServerConfig
 	NacosConfig config.NacosConfig
-	
+	Rs           *redsync.Redsync
 )
 
 // func init() {

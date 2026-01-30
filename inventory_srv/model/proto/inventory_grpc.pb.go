@@ -124,7 +124,7 @@ type UnsafeInventoryServer interface {
 	mustEmbedUnimplementedInventoryServer()
 }
 
-func RegisterInventoryServer(s grpc.ServiceRegistrar, srv InventoryServer) {
+func 	RegisterInventoryServer(s grpc.ServiceRegistrar, srv InventoryServer) {
 	// If the following call pancis, it indicates UnimplementedInventoryServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization

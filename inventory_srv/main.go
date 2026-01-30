@@ -48,7 +48,7 @@ func main() {
 	}
 	
 	server := grpc.NewServer()
-	proto.RegisterInventoryServer(server,&handler.UnimplementedInventoryServer{})
+	proto.RegisterInventoryServer(server,&handler.InventoryServer{})
 	// lis,err:=net.Listen("tcp", "0.0.0.0:8088")
 	lis,err:=net.Listen("tcp",fmt.Sprintf("%s:%d",*IP,*Port))
 	if err!=nil{
