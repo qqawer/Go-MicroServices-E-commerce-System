@@ -1,6 +1,6 @@
 # AWS 部署记录 · 2026-09-17 RPC 首次发布与 Mac 联调
 
-2026-09-17 已通过 SSH 连接服务器，初始化业务数据，并由 Jenkins `grpctest-deploy #2` 成功发布四个 RPC。当前五个基础组件、四个 RPC 容器均正常；Consul 的四项 gRPC 检查均 passing。Mac Web 的真实业务请求已通过，完整下单和自动 Actions 部署仍未完成。下面资源容量和旧安全组规则保留各自记录时的快照。
+2026-09-17 已通过 SSH 连接服务器，初始化业务数据，并由 Jenkins `grpctest-deploy #2` 成功发布四个 RPC。当前五个基础组件、四个 RPC 容器均正常；Consul 的四项 gRPC 检查均 passing。随后按用户要求改为 Mac 公网直连：Jenkins #3 应用 RPC 端口映射并成功，Redis 映射重建后健康；关闭开发隧道后真实接口复验通过。完整下单和自动 Actions 部署仍未完成。下面资源容量和旧安全组规则保留各自记录时的快照。
 
 ## 本次已上线的内容
 
@@ -10,16 +10,18 @@
 - `runtime/state/images.env` 和 `runtime/state/rpc-e74d2e484e9328beed7886a1662acfc0f529551c.json` 保存此次发布状态。没有部署云端 Web，没有开启 `ENABLE_DEPLOY`。
 - AWS MySQL 从空业务库初始化 11 张表。商品 SQL 校验固定 SHA256，剔除 5 条 DROP；导入 420 件商品、113 个品牌、369 个分类、1801 条分类品牌关系，并为每件商品建立初始库存 100。banner 原始数据为空。
 - 创建了一个普通演示账号，密码用现有 RPC 哈希逻辑写入。留下商品 421、数量 1 的购物车；没有创建订单。账号、token 仅保存于 Mac Web 仓库被忽略的 `.local/`，不进入此记录。
-- Nacos 新增三个 Web 的 **local** 分组，dev 逐项验证未变。Mac 使用 RPC/Redis SSH 隧道地址；云端仍用 Docker DNS。启动方法见配套 Web 仓库 `LOCAL_DEVELOPMENT.md`。
+- Nacos 新增三个 Web 的 **local** 分组，dev 逐项验证未变。Mac 的 RPC target 和 Redis host 现已改为 98.83.120.128 的真实服务端口；云端仍用 Docker DNS。启动方法见配套 Web 仓库 `LOCAL_DEVELOPMENT.md`。
 
-| RPC | 容器与 Consul 检查地址 | Consul 服务名 | Mac 隧道 |
+| RPC | 容器与 Consul 检查地址 | Consul 服务名 | Mac 公网直连 |
 | --- | --- | --- | --- |
-| 用户 | `user-srv:50051` | `user-srv` | `127.0.0.1:15051` |
-| 商品 | `goods-srv:50052` | `goods-srv` | `127.0.0.1:15052` |
-| 库存 | `inventory-srv:50053` | `inventory-srv` | `127.0.0.1:15053` |
-| 订单 | `order-srv:50054` | `orders-srv` | `127.0.0.1:15054` |
+| 用户 | `user-srv:50051` | `user-srv` | `98.83.120.128:50051` |
+| 商品 | `goods-srv:50052` | `goods-srv` | `98.83.120.128:50052` |
+| 库存 | `inventory-srv:50053` | `inventory-srv` | `98.83.120.128:50053` |
+| 订单 | `order-srv:50054` | `orders-srv` | `98.83.120.128:50054` |
 
-四个宿主机 RPC 端口只绑定 AWS `127.0.0.1`；本次未新增公网入站规则。Consul 检查从容器网络访问上表地址，标准容器探针则检查自身回环地址；两者均已实测成功。
+服务器 .env 新增 RPC_BIND_ADDRESS=0.0.0.0、REDIS_BIND_ADDRESS=0.0.0.0；四个 RPC 及 Redis 对外映射端口。新增安全组规则：`sgr-0717fb2ae797a9548` 放行 TCP 50051–50054，`sgr-07ba3579096e3aefd` 放行 TCP 6379，来源均为 `137.132.26.103/32`。保存后界面显示 7 条入站规则，原 5 条全部保留。Consul 检查从容器网络访问上表地址，标准容器探针则检查自身回环地址；两者均已实测成功。
+
+本次端口切换前已备份 .env、Compose、配置生成脚本和 local JSON：`runtime/backups/direct-access-20260917T065150Z`。端口切换没有重新导入 SQL；数据卷保留。
 
 ## 服务器与资源
 
@@ -43,7 +45,7 @@
 
 Nacos 的 HTTP 端口已按用户要求改为公网直连：[http://98.83.120.128:8848/nacos/](http://98.83.120.128:8848/nacos/)。AWS 安全组 `sg-01a6adef2222761c1`（launch-wizard）的 TCP 8848 当前允许两个来源：原有 `42.61.2.190/32`（规则 `sgr-0c1eef2046c19176d`）保持不变；2026-09-17 新增当前 Mac 出口 `137.132.26.103/32`（规则 `sgr-0b8c99a0962db2e85`）。新增后从 Mac 直连控制台返回 HTTP 200。如果 Mac 换网络导致公网 IP 改变，需为新来源添加规则；保留旧规则需遵循用户要求。如果 EC2 公网 IP 改变，需更新浏览器访问地址。
 
-服务器 `.env` 设置 `NACOS_HTTP_BIND_ADDRESS=0.0.0.0` 和 `NACOS_GRPC_BIND_ADDRESS=0.0.0.0`，仅重建 Nacos 容器，命名卷保留。TCP 9848 新增来源 `137.132.26.103/32`（规则 `sgr-0a677fd979f814c51`），供 Mac 的 Nacos Go SDK v2 使用；原有两条 8848 规则均保留。其他组件仍绑定 `127.0.0.1`。以下管理页面需要对应 SSH 隧道。当前 Web 开发隧道已占用 Mac 18500；另开管理隧道时不要重复绑定该端口：
+服务器 `.env` 设置 `NACOS_HTTP_BIND_ADDRESS=0.0.0.0` 和 `NACOS_GRPC_BIND_ADDRESS=0.0.0.0`，仅重建 Nacos 容器，命名卷保留。TCP 9848 新增来源 `137.132.26.103/32`（规则 `sgr-0a677fd979f814c51`），供 Mac 的 Nacos Go SDK v2 使用；原有两条 8848 规则均保留。上述是 Nacos 变更记录；后续 RPC/Redis 对外映射见本文件开头。MySQL、Consul、Jenkins 仍绑定回环地址。开发隧道已关闭，以下管理页面可按需通过单独的管理隧道访问：
 
 | 组件 | Mac 浏览器入口 | 账号 |
 | --- | --- | --- |
@@ -71,14 +73,15 @@ ssh -S /Users/outsider/.ssh/grpctest-aws-98.93.115.75.ctl -O check ubuntu@98.93.
 ssh -S /Users/outsider/.ssh/grpctest-aws-98.93.115.75.ctl -O exit ubuntu@98.93.115.75
 ```
 
-需要 Jenkins/Nacos 管理隧道时，在 Mac 终端另行连接；此命令会占用当前终端，按 Ctrl-C 关闭隧道。Consul 的 18500 由 Web 开发隧道提供：
+需要 Jenkins/Nacos 管理隧道时，在 Mac 终端另行连接；此命令会占用当前终端，按 Ctrl-C 关闭隧道。该管理隧道与 Web 启动无关：
 
 ```bash
 ssh -i /Users/outsider/Downloads/Golang_Development/grpctest.pem \
   -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
   -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
   -N -L 127.0.0.1:18080:127.0.0.1:8080 \
-  -L 127.0.0.1:18848:127.0.0.1:8848 ubuntu@98.83.120.128
+  -L 127.0.0.1:18848:127.0.0.1:8848 \
+  -L 127.0.0.1:18500:127.0.0.1:8500 ubuntu@98.83.120.128
 ```
 
 ## 已完成

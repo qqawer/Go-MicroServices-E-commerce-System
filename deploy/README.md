@@ -23,7 +23,7 @@ PR 只构建，不推送、不部署。不配置 `go test`、覆盖率或业务�
 - 订单 RPC 已完成基础构建与启动接线修复；当前交易依赖没有启用，`CreateOrder` 返回 `FailedPrecondition`。库存幂等、事务消息、恢复任务与支付竞争仍按原计划 04–06 实施，不能把编译或探针成功当作交易链路完成。
 - MySQL 首次启动只创建四个空库和业务账号。新增显式空库初始化脚本校验商品 SQL 并移除 DROP，再创建当前模型的业务表和示例库存；有数据时拒绝覆盖，见第 2 节。发布脚本仍只检查各库是否存在表，不代替版本化迁移。
 - Nacos 脚本提供七份新的云端 dev 配置，不覆盖已有在线配置。短信与支付宝凭据留空；MQ 配置和消费者在交易阶段接入。库存正确性由后续数据库事务与约束保证，Redis 锁仅为可选的竞争控制，不作为本轮部署前提补入。
-- 2026-09-17 已初始化 AWS 业务库并由 Jenkins #2 发布四个 RPC；Mac Web 的登录、商品、购物车已实测，见 [AWS 部署记录](DEPLOYED_AWS.md) 和 [验证记录](VALIDATION.md)。`ENABLE_DEPLOY` 仍关闭，服务器 GHCR 权限与 Actions 跨机自动部署尚未接通。
+- 2026-09-17 已初始化 AWS 业务库，由 Jenkins #2 首次发布四个 RPC、#3 切换公网端口映射；Mac Web 的登录、商品、购物车已实测，见 [AWS 部署记录](DEPLOYED_AWS.md) 和 [验证记录](VALIDATION.md)。`ENABLE_DEPLOY` 仍关闭，服务器 GHCR 权限与 Actions 跨机自动部署尚未接通。
 
 ## 1. 准备服务器
 
@@ -59,9 +59,9 @@ sudo python3 scripts/configure-nacos.py --apply
 
 RPC 容器使用镜像提供的 `grpc_health_probe`，检查 `127.0.0.1:50051`–`50054`；Web 容器使用 Alpine 的 `wget` 检查 `127.0.0.1:8021`–`8023` 的 `/health`。这些是容器内自检。Consul 从自己的容器发起检查，使用下表对应的 RPC 容器 DNS 名及端口；两者应指向同一服务，但不能混用各自的 `127.0.0.1`。
 
-源码 debug/pro YAML 已按用户要求改为 Mac 直连 `98.83.120.128:8848`。Mac Web 默认 debug 选择已有的 local 分组，RPC 源码 debug 仍读取 dev；pro 分组仍需另行准备。云端容器继续读取挂载的 runtime 配置，通过 Docker 服务名访问中间件。Mac 的 local 配置与 SSH 隧道已配套建立，详见 Web 仓库 LOCAL_DEVELOPMENT.md。
+源码 debug/pro YAML 已按用户要求改为 Mac 直连 `98.83.120.128:8848`。Mac Web 默认 debug 选择已有的 local 分组，RPC 源码 debug 仍读取 dev；pro 分组仍需另行准备。云端容器继续读取挂载的 runtime 配置，通过 Docker 服务名访问中间件。Mac 的 local 配置已使用 AWS 公网 RPC/Redis 地址，详见 Web 仓库 LOCAL_DEVELOPMENT.md。
 
-如果需要浏览器直接访问 Nacos，在服务器 `.env` 设置 `NACOS_HTTP_BIND_ADDRESS=0.0.0.0`，并在 AWS 安全组中仅向指定客户端公网 IPv4 `/32` 放行 TCP 8848，然后执行 `sudo docker compose --env-file .env -f compose.yaml --profile ci up -d --no-deps --wait nacos`。Mac 直连 Nacos Go SDK v2 还需在 `.env` 设置 `NACOS_GRPC_BIND_ADDRESS=0.0.0.0`，并仅向客户端 `/32` 放行 TCP 9848；SDK 根据 YAML 中的 8848 自动加 1000 连接该端口。历史实例的设置记录见 `DEPLOYED_AWS.md`；仓库默认仍将 8848/9848 绑定回环地址，本轮未更改线上设置。其他组件仍保持内部访问，云端 Go 容器继续通过 Docker 服务名连接。
+如果需要浏览器直接访问 Nacos，在服务器 `.env` 设置 `NACOS_HTTP_BIND_ADDRESS=0.0.0.0`，并在 AWS 安全组中仅向指定客户端公网 IPv4 `/32` 放行 TCP 8848，然后执行 `sudo docker compose --env-file .env -f compose.yaml --profile ci up -d --no-deps --wait nacos`。Mac 直连 Nacos Go SDK v2 还需在 `.env` 设置 `NACOS_GRPC_BIND_ADDRESS=0.0.0.0`，并仅向客户端 `/32` 放行 TCP 9848；SDK 根据 YAML 中的 8848 自动加 1000 连接该端口。历史实例的设置记录见 `DEPLOYED_AWS.md`；仓库默认仍将 8848/9848 绑定回环地址，本轮未更改线上设置。RPC/Redis 的可选公网映射见第 3 节；云端 Go 容器继续通过 Docker 服务名连接。
 
 | 配置 | 云端地址 |
 | --- | --- |
@@ -84,12 +84,12 @@ RPC 容器使用镜像提供的 `grpc_health_probe`，检查 `127.0.0.1:50051`�
 cd /opt/grpctest/deploy
 sudo python3 scripts/bootstrap-demo-db.py --goods-sql /tmp/grpctest_goods_srv.sql
 sudo python3 scripts/bootstrap-demo-db.py --goods-sql /tmp/grpctest_goods_srv.sql --apply
-sudo python3 scripts/configure-local-web.py
+sudo python3 scripts/configure-local-web.py --host 98.83.120.128
 ```
 
 第一条只做预检。导入仅接受校验过的原始 SQL，剔除五条 DROP；配合 mysql/02-business-schema.sql 创建当前 RPC 模型所需表并设置 420 件商品各 100 库存。完成标记在 runtime/state/demo-db-bootstrap.json。再次执行保持原数据；没有标记的非空库拒绝导入。中途失败需检查已创建的表，不自动清空重试。不要编辑已应用的基线来充当未来迁移。
 
-configure-local-web.py 从现有 dev 复制三个 Web 的 local 分组，替换为 Mac 隧道目标；遇到不同的已有 local 配置拒绝覆盖，dev 保持原值。
+configure-local-web.py 从 dev 生成三个 Web 的 local 分组，RPC target 和 Redis host 使用 --host 指定的 AWS 公网 IPv4。脚本允许更新自己上次保存的版本（含此前的隧道配置），在线配置若被独立修改则拒绝覆盖。更新前备份为 runtime/nacos-local/*.previous，逐项读回验证，dev 保持原值。
 
 ## 3. 初始化 Jenkins 与 GHCR 拉取权限
 
@@ -116,7 +116,7 @@ sudo docker compose --profile ci exec jenkins docker login ghcr.io -u qqawer
 
 登录配置会保存在 Jenkins 数据卷中。不要使用 Actions 临时的 `GITHUB_TOKEN` 作为服务器长期凭据，也不要把 PAT 写进 Compose 或仓库。
 
-本方案为了单机学习方便，Jenkins 用 root 访问 Docker socket，因此部署任务拥有这台主机的控制能力。仅用于本人可信仓库；不要开放给不可信 PR 或其他用户运行任意任务。正式环境应拆分控制器与受限部署节点。MySQL/Redis/Consul/Jenkins 只发布到宿主机回环地址，Nacos HTTP 可按上文单独启用受来源 IP 限制的公网访问；Consul 暂不配置 ACL，依赖隔离的内部网络。
+本方案为了单机学习方便，Jenkins 用 root 访问 Docker socket，因此部署任务拥有这台主机的控制能力。仅用于本人可信仓库；不要开放给不可信 PR 或其他用户运行任意任务。正式环境应拆分控制器与受限部署节点。MySQL/Consul/Jenkins 只发布到宿主机回环地址。RPC/Redis 默认绑定回环地址；本机需要直连时，在服务器 .env 设置 RPC_BIND_ADDRESS=0.0.0.0、REDIS_BIND_ADDRESS=0.0.0.0，并在安全组仅对 Mac 公网 IPv4 /32 放行 TCP 50051–50054、6379。更新映射需要重建对应容器，Redis 数据卷保留。Nacos HTTP 可按上文单独启用受来源 IP 限制的公网访问；Consul 暂不配置 ACL，依赖隔离的内部网络。
 
 ### 无私有 GHCR 拉取凭据时的手动发布
 

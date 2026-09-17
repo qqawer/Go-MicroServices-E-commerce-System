@@ -16,7 +16,7 @@ services:
     volumes:
       - ${RUNTIME_DIR}/config/user_srv/config-debug.yaml:/run/config/nacos.yaml:ro
     command: ["-ip", "0.0.0.0", "-port", "50051"]
-    ports: ["127.0.0.1:50051:50051"]
+    ports: ["${RPC_BIND_ADDRESS:-127.0.0.1}:50051:50051"]
     healthcheck:
       test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=127.0.0.1:50051", "-connect-timeout=2s", "-rpc-timeout=2s"]
       interval: 10s
@@ -30,7 +30,7 @@ services:
     volumes:
       - ${RUNTIME_DIR}/config/goods_srv/config-debug.yaml:/run/config/nacos.yaml:ro
     command: ["-ip", "0.0.0.0", "-port", "50052"]
-    ports: ["127.0.0.1:50052:50052"]
+    ports: ["${RPC_BIND_ADDRESS:-127.0.0.1}:50052:50052"]
     healthcheck:
       test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=127.0.0.1:50052", "-connect-timeout=2s", "-rpc-timeout=2s"]
       interval: 10s
@@ -44,7 +44,7 @@ services:
     volumes:
       - ${RUNTIME_DIR}/config/inventory_srv/config-debug.yaml:/run/config/nacos.yaml:ro
     command: ["-ip", "0.0.0.0", "-port", "50053"]
-    ports: ["127.0.0.1:50053:50053"]
+    ports: ["${RPC_BIND_ADDRESS:-127.0.0.1}:50053:50053"]
     healthcheck:
       test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=127.0.0.1:50053", "-connect-timeout=2s", "-rpc-timeout=2s"]
       interval: 10s
@@ -58,7 +58,7 @@ services:
     volumes:
       - ${RUNTIME_DIR}/config/order_srv/config-debug.yaml:/run/config/nacos.yaml:ro
     command: ["-ip", "0.0.0.0", "-port", "50054"]
-    ports: ["127.0.0.1:50054:50054"]
+    ports: ["${RPC_BIND_ADDRESS:-127.0.0.1}:50054:50054"]
     healthcheck:
       test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=127.0.0.1:50054", "-connect-timeout=2s", "-rpc-timeout=2s"]
       interval: 10s

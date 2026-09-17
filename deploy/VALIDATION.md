@@ -2,6 +2,15 @@
 
 本文件保留不同时间的验证结果；旧代码的检查结论不自动适用于本次提交。当前本地修复已使订单 RPC 恢复构建，交易依赖仍未启用，`CreateOrder` 返回 `FailedPrecondition`。2026-09-17 最新一轮已连接 AWS 并完成首次 RPC 发布及 Mac Web 联调，见下方记录；较早的离线验证另行保留。
 
+## 2026-09-17 追加：关闭开发隧道后的公网直连验收
+
+- AWS 安全组新增 TCP 50051–50054、6379 两条规则，来源 137.132.26.103/32；界面成功回显并确认原 5 条入站规则保留。
+- RPC_BIND_ADDRESS、REDIS_BIND_ADDRESS 在服务器设为 0.0.0.0；Compose 配置校验通过，Redis 重建后 healthy，Jenkins #3 发布同组 RPC 镜像并返回 SUCCESS。四个 Consul 检查 passing。
+- configure-local-web.py --host 98.83.120.128 更新并读回三个 local JSON；RPC target、Redis host/port 正确，dev 内容逐项相等。旧 local JSON 和部署文件已备份。
+- 开发 SSH 控制连接已关闭，Mac 15051–15054、16379 均无监听。三个 Web 在各自目录以 go run . 重新启动，三个 /health 200。
+- 登录 200；商品列表含 420 件商品、详情/品牌/分类 200；无 token 购物车 401；购物车添加、查询、PATCH 200；订单列表 200、不存在详情 404。保留演示购物车商品 421、数量 1，无新订单。
+- lsof 确认 user-web/goods-web/order-web 进程直接连接 98.83.120.128 的 RPC 端口及 Redis 6379，不经过本机转发。此处未复测交易或支付功能，其限制仍与上一轮一致。
+
 ## 2026-09-17 AWS RPC + Mac Web 实测
 
 - Jenkins `grpctest-deploy #2` SUCCESS；四个 RPC 容器 healthy，Consul 四项检查 passing。发布的业务提交是 e74d2e4，采用验证仓库/提交/服务标签的预导入 image ID 模式。未开启 GitHub 自动部署。
