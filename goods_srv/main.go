@@ -31,7 +31,6 @@ func main() {
 	initialize.InitConfig()
 	initialize.InitDB()
 
-	zap.S().Info(global.ServerConfig)
 
 
 	flag.Parse()

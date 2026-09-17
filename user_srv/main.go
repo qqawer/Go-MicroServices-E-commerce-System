@@ -31,7 +31,6 @@ func main() {
 	initialize.InitConfig()
 	initialize.InitDB()
 
-	zap.S().Info(global.ServerConfig)
 
 
 	flag.Parse()
@@ -68,7 +67,7 @@ func main() {
 	}
 	check:=&api.AgentServiceCheck{
 		//HTTP: "http://127.0.0.1:8021/health",
-		GRPC: fmt.Sprintf("192.168.11.120:%d",*Port),//Consul 会定期请求这个 URL 来检查服务是否健康
+		GRPC: fmt.Sprintf("%s:%d",global.ServerConfig.Host,*Port),//Consul 会定期请求这个 URL 来检查服务是否健康
 		Interval: "5s",//每 5s 检查一次。
     	Timeout: "2s",// 检查响应超时时间为 2s。
     	DeregisterCriticalServiceAfter: "10s",//如果连续失败达 10s，则从注册列表中移除服务。
@@ -81,7 +80,7 @@ func main() {
 	registration.ID=global.ServerConfig.Name//global.ServerConfig.Name 服务实例唯一标识（如 "user-web"，如果部署多个副本，每个副本需要不同 ID）。
 	registration.Port=*Port//服务监听的端口号（如 8021）
 	registration.Tags=[]string{"mxshop","boddy","imooc","user","srv"}//服务标签，用于分类或标记服务（如 ["mxshop", "boddy"]）。
-	registration.Address="192.168.11.120"//服务所在主机的 IP 地址,会被web层拿到做服务发现，consul自己来做检查的
+	registration.Address=global.ServerConfig.Host//服务所在主机的 IP 地址,会被web层拿到做服务发现，consul自己来做检查的
 	registration.Check=check
 
 	//1. 如何启动两个服务

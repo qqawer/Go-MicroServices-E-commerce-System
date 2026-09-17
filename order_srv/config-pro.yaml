@@ -1,16 +1,5 @@
-# name: "user-srv"
-# mysql:
-#   host: 192.168.11.210
-#   port: 3306
-#   user: root
-#   password: 123456
-#   name: 'grpctest'
-  
-# consul:
-#   host: 192.168.11.210
-#   port: 8500
-
-host: '192.168.11.210'
+# 云端目前仅有 dev 分组；使用 pro 前须准备对应分组配置。
+host: '98.83.120.128'
 port: 8848
 namespace: 'ce4b3f78-1db4-4418-9cb9-a3e1bd406c88'
 user: 'nacos'

@@ -1,16 +1,5 @@
-# name: 'user-srv'
-# mysql:
-#   host: 192.168.11.210
-#   port: 3306
-#   user: root
-#   password: 123456
-#   name: 'grpctest'
-
-# consul:
-#   host: 192.168.11.210
-#   port: 8500
-
-host: '192.168.11.210'
+# Mac 直连 AWS Nacos；MXSHOP_DEBUG=true 使用 dev 分组。
+host: '98.83.120.128'
 port: 8848
 namespace: '80f74565-a2d2-4cb1-9820-cebc8d97f58e'
 user: 'nacos'

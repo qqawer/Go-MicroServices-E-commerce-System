@@ -1,19 +1,8 @@
-# name: "user-srv"
-# mysql:
-#   host: 192.168.11.210
-#   port: 3306
-#   user: root
-#   password: 123456
-#   name: 'grpctest'
-  
-# consul:
-#   host: 192.168.11.210
-#   port: 8500
-
-host: '192.168.11.210'
+# 云端目前仅有 dev 分组；使用 pro 前须准备对应分组配置。
+host: '98.83.120.128'
 port: 8848
 namespace: 'e2f59a3b-5bcc-470b-ad61-8b2f0264525b'
 user: 'nacos'
 password: 'nacos'
-dataid: 'goods-srv.json'
+dataid: 'inventory-srv.json'
 group: 'pro'
