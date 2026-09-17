@@ -1,0 +1,15 @@
+.git
+.github
+.DS_Store
+**/.DS_Store
+**/tmp
+**/logs
+**/*.log
+**/*.sql
+**/config-debug.yaml
+**/config-pro.yaml
+**/*.pem
+**/*.key
+**/.env*
+deploy
+reports
