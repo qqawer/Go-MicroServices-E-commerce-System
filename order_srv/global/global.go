@@ -2,25 +2,29 @@ package global
 
 import (
 	// model "grpctest/model/user"
-	"grpctest/inventory_srv/config"
-	
+	"grpctest/order_srv/config"
+	"grpctest/order_srv/proto"
+
 	// "log"
 	// "os"
 	// "time"
 
 	// "gorm.io/driver/mysql"
+	"github.com/apache/rocketmq-client-go/v2"
+	"github.com/apache/rocketmq-client-go/v2/producer"
 	"github.com/go-redsync/redsync/v4"
 	"gorm.io/gorm"
 	// "gorm.io/gorm/logger"
 	// "gorm.io/gorm/schema"
 )
+
 var (
-	DB *gorm.DB
-	ServerConfig *config.ServerConfig
-	NacosConfig config.NacosConfig
+	DB                 *gorm.DB
+	ServerConfig       *config.ServerConfig
+	NacosConfig        config.NacosConfig
 	GoodsSrvClient     proto.GoodsClient
 	InventorySrvClient proto.InventoryClient
-	Rs           *redsync.Redsync
+	Rs                 *redsync.Redsync
 
 	GroupInventory producer.Option
 	GroupOrder     producer.Option
@@ -54,12 +58,11 @@ var (
 // 	}
 // 	// DB.AutoMigrate(&model.User{})
 // }
-	
+
 // 	//设置全局的logger,这个logger在我们执行每个sql语句的时候会打印每一行sql
 // 	//sql才是最重要的，本着这个的原则我尽量的给大家看到每个api背后的sql语句是什么
 
 // 	//定义一个表结构，将表结构直接生成对应的表 - migrations
 // 	//迁移schema
-	
+
 //   // Migrate the schema
-  

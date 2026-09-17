@@ -4,6 +4,7 @@ go 1.22.9
 
 require (
 	github.com/fsnotify/fsnotify v1.8.0
+	github.com/go-redsync/redsync/v4 v4.13.0
 	github.com/golang/protobuf v1.5.4
 	github.com/hashicorp/consul/api v1.27.0
 	github.com/nacos-group/nacos-sdk-go/v2 v2.3.5
@@ -44,10 +45,11 @@ require (
 	github.com/clbanning/mxj/v2 v2.5.5 // indirect
 	github.com/deckarep/golang-set v1.7.1 // indirect
 	github.com/emirpasic/gods v1.12.0 // indirect
-	github.com/fatih/color v1.14.1 // indirect
-	github.com/go-redsync/redsync/v4 v4.13.0 // indirect
+	github.com/fatih/color v1.15.0 // indirect
+	github.com/go-playground/form v3.1.4+incompatible // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/golang/mock v1.6.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.5.0 // indirect
@@ -58,11 +60,12 @@ require (
 	github.com/hashicorp/serf v0.10.1 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
+	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.3 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.17 // indirect
+	github.com/mattn/go-isatty v0.0.18 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
@@ -77,7 +80,7 @@ require (
 	github.com/prometheus/common v0.32.1 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
 	github.com/sagikazarmark/locafero v0.7.0 // indirect
-	github.com/sirupsen/logrus v1.6.0 // indirect
+	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.12.0 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
@@ -99,10 +102,12 @@ require (
 )
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/apache/rocketmq-client-go/v2 v2.1.2
-	github.com/go-sql-driver/mysql v1.7.0 // indirect
+	github.com/go-sql-driver/mysql v1.7.0
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/mbobakov/grpc-consul-resolver v1.5.3
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/spf13/viper v1.20.1
 	go.uber.org/zap v1.27.0

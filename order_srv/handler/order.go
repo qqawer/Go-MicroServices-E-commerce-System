@@ -25,7 +25,7 @@ import (
 	"gorm.io/gorm"
 )
 
-//GenerationSn 生成订单编号
+// GenerationSn 生成订单编号
 func GenerationSn(userId int32) string {
 	rand.Seed(time.Now().UnixNano())
 	now := time.Now()
@@ -34,7 +34,7 @@ func GenerationSn(userId int32) string {
 	return orderSn
 }
 
-//Paginate 将数据进行分页
+// Paginate 将数据进行分页
 func Paginate(page, pageSize int) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		if page == 0 {
@@ -53,10 +53,14 @@ func Paginate(page, pageSize int) func(db *gorm.DB) *gorm.DB {
 	}
 }
 
-//OrderServer 订单服务
-type OrderServer struct{}
+// OrderServer 订单服务
+type OrderServer struct {
+	proto.UnimplementedOrderServer
+}
 
-//CartItemList 获取购物车列表
+var _ proto.OrderServer = (*OrderServer)(nil)
+
+// CartItemList 获取购物车列表
 func (O *OrderServer) CartItemList(ctx context.Context, req *proto.UserInfo) (*proto.CartItemListResponse, error) {
 	var shopCars []model.ShoppingCart
 	result := global.DB.Where(&model.ShoppingCart{User: req.Id}).Find(&shopCars)
@@ -79,7 +83,7 @@ func (O *OrderServer) CartItemList(ctx context.Context, req *proto.UserInfo) (*p
 	return &Rsp, nil
 }
 
-//CreateCarItem 新增商品到购物车，1. 购物车原本没有 2. 购物车已经有该商品
+// CreateCarItem 新增商品到购物车，1. 购物车原本没有 2. 购物车已经有该商品
 func (O *OrderServer) CreateCarItem(ctx context.Context, req *proto.CartItemRequest) (*proto.ShopCartInfoResponse, error) {
 	var shopCart model.ShoppingCart
 	if result := global.DB.Where(&model.ShoppingCart{Goods: req.GoodsId, User: req.UserId}).First(&shopCart); result.RowsAffected == 1 {
@@ -95,7 +99,7 @@ func (O *OrderServer) CreateCarItem(ctx context.Context, req *proto.CartItemRequ
 	return &proto.ShopCartInfoResponse{Id: shopCart.ID}, nil
 }
 
-//UpdateCartItem 更新购物车：商品更新数量和选中状态
+// UpdateCartItem 更新购物车：商品更新数量和选中状态
 func (O *OrderServer) UpdateCartItem(ctx context.Context, req *proto.CartItemRequest) (*empty.Empty, error) {
 	var shopCart model.ShoppingCart
 	if result := global.DB.Where("goods=? and user=?", req.GoodsId, req.UserId).First(&shopCart); result.RowsAffected == 0 {
@@ -110,7 +114,7 @@ func (O *OrderServer) UpdateCartItem(ctx context.Context, req *proto.CartItemReq
 	return &empty.Empty{}, nil
 }
 
-//DeleteCartItem 删除购物车记录
+// DeleteCartItem 删除购物车记录
 func (O *OrderServer) DeleteCartItem(ctx context.Context, req *proto.CartItemRequest) (*empty.Empty, error) {
 	//通过goodsId和userId删除
 	if result := global.DB.Where("goods=? and user=?", req.GoodsId, req.UserId).Delete(&model.ShoppingCart{}); result.RowsAffected == 0 {
@@ -119,7 +123,7 @@ func (O *OrderServer) DeleteCartItem(ctx context.Context, req *proto.CartItemReq
 	return &emptypb.Empty{}, nil
 }
 
-//OrderListener 发送消息 可靠消息传送，基于rocketmq的延时机制，对订单支付状态检查以及及时归还库存
+// OrderListener 发送消息 可靠消息传送，基于rocketmq的延时机制，对订单支付状态检查以及及时归还库存
 type OrderListener struct {
 	Code        codes.Code      //返回状态码
 	Detail      string          //返回状态描述
@@ -128,7 +132,7 @@ type OrderListener struct {
 	Ctx         context.Context //上下文数据
 }
 
-//ExecuteLocalTransaction  When send transactional prepare(half) message succeed, this method will be invoked to execute local transaction.
+// ExecuteLocalTransaction  When send transactional prepare(half) message succeed, this method will be invoked to execute local transaction.
 func (o *OrderListener) ExecuteLocalTransaction(msgs *primitive.Message) primitive.LocalTransactionState {
 	//执行本地事务
 	//1. 从购物车获取商品信息
@@ -138,7 +142,12 @@ func (o *OrderListener) ExecuteLocalTransaction(msgs *primitive.Message) primiti
 	//5.从购物车中删除已购买记录
 
 	//接收上下文数据链路追踪
-	parentSpan := opentracing.SpanFromContext(o.Ctx)
+	ctx := o.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	parentSpan, _ := opentracing.StartSpanFromContext(ctx, "order_transaction")
+	defer parentSpan.Finish()
 
 	fmt.Println("开始执行本地事务")
 	var OrderInfo model.OrderInfo
@@ -293,7 +302,7 @@ func (o *OrderListener) ExecuteLocalTransaction(msgs *primitive.Message) primiti
 	return primitive.RollbackMessageState
 }
 
-//CheckLocalTransaction When no response to prepare(half) message. broker will send check message to check the transaction status, and this method will be invoked to get local transaction status.
+// CheckLocalTransaction When no response to prepare(half) message. broker will send check message to check the transaction status, and this method will be invoked to get local transaction status.
 func (o *OrderListener) CheckLocalTransaction(msg *primitive.MessageExt) primitive.LocalTransactionState {
 	//消息回查
 	var OrderInfo model.OrderInfo
@@ -307,8 +316,19 @@ func (o *OrderListener) CheckLocalTransaction(msg *primitive.MessageExt) primiti
 	return primitive.RollbackMessageState
 }
 
-//CreateOrder 新建订单
+// CreateOrder 新建订单
 func (O *OrderServer) CreateOrder(ctx context.Context, req *proto.OrderRequest) (*proto.OrderInfoResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
+	if req == nil || req.UserId <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "用户信息无效")
+	}
+	// 交易运行时由统一的初始化流程提供，未就绪时不能开始写订单或扣库存。
+	if global.ServerConfig == nil || global.DB == nil || global.GoodsSrvClient == nil ||
+		global.InventorySrvClient == nil || global.MQOrder == nil || global.MQInventory == nil {
+		return nil, status.Error(codes.FailedPrecondition, "订单交易服务尚未就绪")
+	}
 	//新建订单：
 	//1. 从购物车获取商品信息
 	//2. 去查询商品服务(跨服务)
@@ -368,7 +388,7 @@ func (O *OrderServer) CreateOrder(ctx context.Context, req *proto.OrderRequest) 
 	return &proto.OrderInfoResponse{Id: orderListener.ID, OrderSn: order.OrderSn, Total: orderListener.OrderAmount}, nil
 }
 
-//OrderList 订单列表
+// OrderList 订单列表
 func (O *OrderServer) OrderList(ctx context.Context, req *proto.OrderFilterRequest) (*proto.OrderListResponse, error) {
 	var orders []model.OrderInfo
 	var Rsp proto.OrderListResponse
@@ -395,7 +415,7 @@ func (O *OrderServer) OrderList(ctx context.Context, req *proto.OrderFilterReque
 	return &Rsp, nil
 }
 
-//OrderDetail 订单详情
+// OrderDetail 订单详情
 func (O *OrderServer) OrderDetail(ctx context.Context, req *proto.OrderRequest) (*proto.OrderInfoDetailResponse, error) {
 	var order model.OrderInfo
 	var Rsp proto.OrderInfoDetailResponse
@@ -438,7 +458,7 @@ func (O *OrderServer) OrderDetail(ctx context.Context, req *proto.OrderRequest) 
 	return &Rsp, nil
 }
 
-//UpdateOrderStatus 更新订单状态
+// UpdateOrderStatus 更新订单状态
 func (O *OrderServer) UpdateOrderStatus(ctx context.Context, req *proto.OrderStatus) (*empty.Empty, error) {
 	//先查询后更新，效率较低，直接更新查询
 	if result := global.DB.Model(&model.OrderInfo{}).Where("order_sn = ?", req.OrderSn).Update("status", req.Status); result.RowsAffected == 0 {

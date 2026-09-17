@@ -1,47 +1,70 @@
 package initialize
 
 import (
+	"context"
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
+	"sync"
+	"time"
+
+	"grpctest/order_srv/config"
 	"grpctest/order_srv/global"
 	"grpctest/order_srv/proto"
 
-	_ "github.com/mbobakov/grpc-consul-resolver" // It's important
-	"go.uber.org/zap"
+	_ "github.com/mbobakov/grpc-consul-resolver"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
-//InitSrvConn 连接到consul注册中心并对服务做负载均衡
-func InitSrvConn() {
-	//连接商品服务
-	consul := global.ServerConfig.ConsulInfo
-	GoodsConn, err := grpc.Dial(
-		fmt.Sprintf("consul://%s:%d/%s?wait=14s&tag=srv", consul.Host, consul.Port, global.ServerConfig.GoodsSerInfo.Name),
-		grpc.WithInsecure(),
-		grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy": "round_robin"}`),
-	)
+// InitSrvConn 建立可复用的下游连接；返回的清理函数应在停止接收 RPC 后调用。
+func InitSrvConn() (cleanup func(), err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return initSrvConn(ctx, global.ServerConfig, grpc.DialContext)
+}
 
-	fmt.Println(global.ServerConfig)
-
-	if err != nil {
-		zap.S().Errorw("[ InitSrvConn] 连接 【商品服务】失败", err.Error())
-		return
+func initSrvConn(ctx context.Context, cfg *config.ServerConfig, dial func(context.Context, string, ...grpc.DialOption) (*grpc.ClientConn, error)) (func(), error) {
+	if err := validateServerConfig(cfg); err != nil {
+		return nil, err
 	}
-	goodsClient := proto.NewGoodsClient(GoodsConn)
-	global.GoodsSrvClient = goodsClient
-
-	//连接库存服务
-	InvConn, err := grpc.Dial(
-		fmt.Sprintf("consul://%s:%d/%s?wait=14s&tag=srv", consul.Host, consul.Port, global.ServerConfig.InventorySerInfo.Name),
-		grpc.WithInsecure(),
-		grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy": "round_robin"}`),
-	)
-
-	fmt.Println(global.ServerConfig)
-
-	if err != nil {
-		zap.S().Errorw("[ InitSrvConn] 连接 【库存服务】失败", err.Error())
-		return
+	connect := func(service string) (*grpc.ClientConn, error) {
+		target := url.URL{
+			Scheme: "consul",
+			Host:   net.JoinHostPort(cfg.ConsulInfo.Host, strconv.Itoa(cfg.ConsulInfo.Port)),
+			Path:   "/" + service,
+			// resolver 自身的 HTTP 请求也设期限，避免关闭连接后无限等待 Consul。
+			RawQuery: "wait=14s&timeout=16s&tag=srv&healthy=true",
+		}
+		// WithBlock 让期限覆盖服务发现和连接建立；Ready 只证明传输连接可用，
+		// 仍需由各次业务 RPC 的结果判断服务是否完成了请求。
+		conn, err := dial(ctx, target.String(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithBlock(),
+			grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("connect to service %s: %w", service, err)
+		}
+		return conn, nil
 	}
-	inventoryClient := proto.NewInventoryClient(InvConn)
-	global.InventorySrvClient = inventoryClient
+	goodsConn, err := connect(cfg.GoodsSerInfo.Name)
+	if err != nil {
+		return nil, err
+	}
+	inventoryConn, err := connect(cfg.InventorySerInfo.Name)
+	if err != nil {
+		_ = goodsConn.Close()
+		return nil, err
+	}
+	global.GoodsSrvClient = proto.NewGoodsClient(goodsConn)
+	global.InventorySrvClient = proto.NewInventoryClient(inventoryConn)
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			_ = inventoryConn.Close()
+			_ = goodsConn.Close()
+		})
+	}, nil
 }
