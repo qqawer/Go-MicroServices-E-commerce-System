@@ -1,6 +1,17 @@
 # 验证记录
 
-本文件保留不同时间的验证结果；旧代码的检查结论不自动适用于本次提交。当前本地修复已使订单 RPC 恢复构建，交易依赖仍未启用，`CreateOrder` 返回 `FailedPrecondition`。本轮没有运行真实业务发布或重新连接 AWS。
+本文件保留不同时间的验证结果；旧代码的检查结论不自动适用于本次提交。当前本地修复已使订单 RPC 恢复构建，交易依赖仍未启用，`CreateOrder` 返回 `FailedPrecondition`。2026-09-17 最新一轮已连接 AWS 并完成首次 RPC 发布及 Mac Web 联调，见下方记录；较早的离线验证另行保留。
+
+## 2026-09-17 AWS RPC + Mac Web 实测
+
+- Jenkins `grpctest-deploy #2` SUCCESS；四个 RPC 容器 healthy，Consul 四项检查 passing。发布的业务提交是 e74d2e4，采用验证仓库/提交/服务标签的预导入 image ID 模式。未开启 GitHub 自动部署。
+- 本机隔离 MySQL 验证了空库导入、带完成标记重复执行不改数据、非空库无标记时拒绝执行。随后在 AWS 执行相同导入：11 张业务表、420 件商品、113 品牌、369 分类、1801 分类品牌关系、420 条库存各 100。
+- Mac 通过 SSH 隧道调用四个真实 RPC：创建演示用户并校验密码、商品列表/详情、库存查询、购物车查询通过；CreateOrder 返回预期 FailedPrecondition，未创建订单。
+- 三个 Web 均在各自目录以不带环境变量的 `go run .` 启动。`USER` 覆盖 Nacos 用户的故障已用 `TestDebugEnvironmentDoesNotOverrideNacosUser` 先复现、修复后通过；显式 MXSHOP_DEBUG=false 仍生效。
+- HTTP 验证：三个 /health 为 200；420 件商品列表、421 详情、品牌、分类、空 banner 为 200；正确登录 200 且有效期约 24 小时；错误验证码与错误密码均 400 且无 token；普通用户请求管理员接口 403。
+- 跨 Web Bearer token 验证：无 token 购物车 401；添加商品 421、查询、PATCH 数量/选中状态均 200；订单列表 200/空数组，不存在订单详情 404。修正订单 handler 对 goods-web Claims 的错误类型引用后，原先 HTTP 500 不再复现。
+- HTTP 新建订单返回预期的 500 / gRPC FailedPrecondition（msg:9）；这是当前依赖缺失保护，不能列为下单成功。未调用外部短信或支付。
+- 本机三服务 readonly 构建、配置回归、Bash/Python 语法检查通过；运行日志、Nacos 缓存和私密测试账号未提交。预导入镜像的错误标签拒绝检查通过。容器健康通过后的真实失败回滚仍未验证。
 
 ## 2026-09-17 当前提交离线验证
 

@@ -21,9 +21,9 @@ PR 只构建，不推送、不部署。不配置 `go test`、覆盖率或业务�
 - 已提供 MySQL、Redis、Nacos、Consul、Jenkins，以及四个 RPC / 三个 Web 服务的部署配置。
 - `grpctest_web` 的三个 `jwt_test.go` 已按要求删除；流水线保留编译与启动健康检查。
 - 订单 RPC 已完成基础构建与启动接线修复；当前交易依赖没有启用，`CreateOrder` 返回 `FailedPrecondition`。库存幂等、事务消息、恢复任务与支付竞争仍按原计划 04–06 实施，不能把编译或探针成功当作交易链路完成。
-- MySQL 首次启动只创建四个空数据库和业务账号，不导入商品 SQL，不创建完整业务表。旧商品 SQL 含 `DROP TABLE`，因此不会自动执行。部署前需确认并初始化四个库的表；脚本只检查各库是否至少存在表，不校验所有列或迁移版本。
+- MySQL 首次启动只创建四个空库和业务账号。新增显式空库初始化脚本校验商品 SQL 并移除 DROP，再创建当前模型的业务表和示例库存；有数据时拒绝覆盖，见第 2 节。发布脚本仍只检查各库是否存在表，不代替版本化迁移。
 - Nacos 脚本提供七份新的云端 dev 配置，不覆盖已有在线配置。短信与支付宝凭据留空；MQ 配置和消费者在交易阶段接入。库存正确性由后续数据库事务与约束保证，Redis 锁仅为可选的竞争控制，不作为本轮部署前提补入。
-- [AWS 部署记录](DEPLOYED_AWS.md) 保存了 2026-09-16/17 的基础组件部署与地址复核结果。本轮提交只做本地离线验证，没有重新连接 AWS，也没有发布业务容器或配置 GitHub Secrets。`ENABLE_DEPLOY` 保持关闭。
+- 2026-09-17 已初始化 AWS 业务库并由 Jenkins #2 发布四个 RPC；Mac Web 的登录、商品、购物车已实测，见 [AWS 部署记录](DEPLOYED_AWS.md) 和 [验证记录](VALIDATION.md)。`ENABLE_DEPLOY` 仍关闭，服务器 GHCR 权限与 Actions 跨机自动部署尚未接通。
 
 ## 1. 准备服务器
 
@@ -59,7 +59,7 @@ sudo python3 scripts/configure-nacos.py --apply
 
 RPC 容器使用镜像提供的 `grpc_health_probe`，检查 `127.0.0.1:50051`–`50054`；Web 容器使用 Alpine 的 `wget` 检查 `127.0.0.1:8021`–`8023` 的 `/health`。这些是容器内自检。Consul 从自己的容器发起检查，使用下表对应的 RPC 容器 DNS 名及端口；两者应指向同一服务，但不能混用各自的 `127.0.0.1`。
 
-源码 debug/pro YAML 已按用户要求改为 Mac 直连 `98.83.120.128:8848`。本机使用 `MXSHOP_DEBUG=true` 选择已有的 dev 分组，pro 分组仍需另行准备。云端容器继续读取挂载的 runtime 配置，通过 Docker 服务名访问中间件。Nacos 连接成功后，Mac 调用 Redis、Consul、RPC 仍需要对应的业务连接配置。
+源码 debug/pro YAML 已按用户要求改为 Mac 直连 `98.83.120.128:8848`。Mac Web 默认 debug 选择已有的 local 分组，RPC 源码 debug 仍读取 dev；pro 分组仍需另行准备。云端容器继续读取挂载的 runtime 配置，通过 Docker 服务名访问中间件。Mac 的 local 配置与 SSH 隧道已配套建立，详见 Web 仓库 LOCAL_DEVELOPMENT.md。
 
 如果需要浏览器直接访问 Nacos，在服务器 `.env` 设置 `NACOS_HTTP_BIND_ADDRESS=0.0.0.0`，并在 AWS 安全组中仅向指定客户端公网 IPv4 `/32` 放行 TCP 8848，然后执行 `sudo docker compose --env-file .env -f compose.yaml --profile ci up -d --no-deps --wait nacos`。Mac 直连 Nacos Go SDK v2 还需在 `.env` 设置 `NACOS_GRPC_BIND_ADDRESS=0.0.0.0`，并仅向客户端 `/32` 放行 TCP 9848；SDK 根据 YAML 中的 8848 自动加 1000 连接该端口。历史实例的设置记录见 `DEPLOYED_AWS.md`；仓库默认仍将 8848/9848 绑定回环地址，本轮未更改线上设置。其他组件仍保持内部访问，云端 Go 容器继续通过 Docker 服务名连接。
 
@@ -75,6 +75,21 @@ RPC 容器使用镜像提供的 `grpc_health_probe`，检查 `127.0.0.1:50051`�
 注册地址是容器 DNS 名，服务名是发现时查询的标识，两者可以不同。新的云端配置统一使用 `inventory-srv`，不要混用旧导出中的 `inevntory-srv`。应用的 Nacos SDK 已接入 bootstrap 中的用户名和密码。
 
 四个业务库分别为 `grpctest_user_srv`、`grpctest_goods_srv`、`grpctest_inventory_srv`、`grpctest_orders_srv`。部署前需准备表结构与业务数据，并完成订单交易与恢复验证；目前不启用应用自动部署。不要直接执行旧 `model/main` 工具，它们仍有写死的数据库地址和凭据。
+
+### 空库导入示例数据
+
+商品 SQL 源于本仓库 `goods_srv/grpctest_goods_srv.sql`，先上传到服务器临时路径，再执行：
+
+```bash
+cd /opt/grpctest/deploy
+sudo python3 scripts/bootstrap-demo-db.py --goods-sql /tmp/grpctest_goods_srv.sql
+sudo python3 scripts/bootstrap-demo-db.py --goods-sql /tmp/grpctest_goods_srv.sql --apply
+sudo python3 scripts/configure-local-web.py
+```
+
+第一条只做预检。导入仅接受校验过的原始 SQL，剔除五条 DROP；配合 mysql/02-business-schema.sql 创建当前 RPC 模型所需表并设置 420 件商品各 100 库存。完成标记在 runtime/state/demo-db-bootstrap.json。再次执行保持原数据；没有标记的非空库拒绝导入。中途失败需检查已创建的表，不自动清空重试。不要编辑已应用的基线来充当未来迁移。
+
+configure-local-web.py 从现有 dev 复制三个 Web 的 local 分组，替换为 Mac 隧道目标；遇到不同的已有 local 配置拒绝覆盖，dev 保持原值。
 
 ## 3. 初始化 Jenkins 与 GHCR 拉取权限
 
@@ -102,6 +117,18 @@ sudo docker compose --profile ci exec jenkins docker login ghcr.io -u qqawer
 登录配置会保存在 Jenkins 数据卷中。不要使用 Actions 临时的 `GITHUB_TOKEN` 作为服务器长期凭据，也不要把 PAT 写进 Compose 或仓库。
 
 本方案为了单机学习方便，Jenkins 用 root 访问 Docker socket，因此部署任务拥有这台主机的控制能力。仅用于本人可信仓库；不要开放给不可信 PR 或其他用户运行任意任务。正式环境应拆分控制器与受限部署节点。MySQL/Redis/Consul/Jenkins 只发布到宿主机回环地址，Nacos HTTP 可按上文单独启用受来源 IP 限制的公网访问；Consul 暂不配置 ACL，依赖隔离的内部网络。
+
+### 无私有 GHCR 拉取凭据时的手动发布
+
+Jenkins 参数 PRELOADED 默认为 false。已有 Jenkins 任务不会自动重新 bootstrap，升级时需同步 Pipeline 定义并添加 Boolean 参数 PRELOADED（默认 false），保留现有账号权限。
+
+人工发布可从所填提交的干净源码构建 Linux amd64 镜像，附加以下标签后 docker save，经 SSH 传输并 docker load 到 AWS：
+
+- org.opencontainers.image.source=https://github.com/qqawer/grpctest
+- org.opencontainers.image.revision=完整 40 位源码提交
+- io.grpctest.service=user_srv / goods_srv / inventory_srv / order_srv
+
+在 Jenkins 选择 GROUP=rpc、填 REVISION、设置 PRELOADED=true，IMAGES_JSON 映射四个服务到 docker image inspect 得到的 `sha256:<64位 image ID>`。发布器检查镜像身份及三项标签，再检查依赖、更新容器并等待健康；这一路径不请求 GHCR。它依赖可信构建与 SSH 导入，标签不替代签名认证。正常 CI 仍提交 GHCR repo@digest，PRELOADED=false。
 
 ## 4. 配置两个 GitHub 仓库
 
@@ -131,7 +158,7 @@ SSH 的安全组必须允许 Actions runner 到达服务器；只允许 Mac 的 
 
 `runtime/state/images.env` 记录当前健康发布的镜像 digest，`runtime/state/<rpc|web>-<commit>.json` 记录成功发布。两个仓库更新各自的服务，Jenkins 串行执行，脚本还有跨进程文件锁。
 
-需要主动回退时，将旧 JSON 中的 `images` 对象、对应 `revision` 和 `group` 填到 Jenkins 任务参数后构建。必须使用仍保留在 GHCR 的历史镜像。回退不会回退数据库结构、数据或 Nacos 配置。
+需要主动回退时，将旧 JSON 中的 `images` 对象、对应 `revision` 和 `group` 填到 Jenkins 任务参数后构建。常规版本需保留 GHCR 历史镜像；预导入版本需保留宿主机 image ID，并设置 PRELOADED=true。回退不会回退数据库结构、数据或 Nacos 配置。
 
 启动健康检查失败时，脚本尝试恢复以前存在的服务；首次部署没有旧容器时，只移除这次新建的应用容器。恢复失败会保持任务失败，需要检查日志。主机宕机、强制杀进程或 Jenkins 超时中止可能打断恢复，需要人工核对；单机 Compose 更新也会有短暂中断。
 

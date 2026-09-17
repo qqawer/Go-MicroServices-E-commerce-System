@@ -1,6 +1,25 @@
-# AWS 部署记录 · 2026-09-16（2026-09-17 地址与 Nacos 复核）
+# AWS 部署记录 · 2026-09-17 RPC 首次发布与 Mac 联调
 
-以下云端数据是 2026-09-16 部署、2026-09-17 地址与 Nacos 复核时的历史快照，不是本轮提交重新探测的结果。记录时五个基础组件通过健康检查，业务服务尚未上线，完整 CI/CD 尚未接通。本轮只修复本地 Compose 与代码的匹配关系，没有同步服务器或启用自动部署。
+2026-09-17 已通过 SSH 连接服务器，初始化业务数据，并由 Jenkins `grpctest-deploy #2` 成功发布四个 RPC。当前五个基础组件、四个 RPC 容器均正常；Consul 的四项 gRPC 检查均 passing。Mac Web 的真实业务请求已通过，完整下单和自动 Actions 部署仍未完成。下面资源容量和旧安全组规则保留各自记录时的快照。
+
+## 本次已上线的内容
+
+- RPC 镜像对应提交 `e74d2e484e9328beed7886a1662acfc0f529551c`，Linux amd64；Go 业务源码未额外修改。部署脚本和 Compose 同步到 `/opt/grpctest/deploy`。
+- GitHub Actions 已发布 GHCR 镜像，但现有本机凭据缺少私有包读取权限，服务器也未登录 GHCR。本次使用本机从同提交构建的镜像，经 SSH 导入；Jenkins 的 `PRELOADED=true` 校验不可变 image ID、仓库、提交和服务标签后启动容器。正常 CI digest 发布路径保持不变。
+- Jenkins #1 因 PRELOADED 参数未正确注册而在镜像校验前失败，没有启动容器；补齐现有任务的 Boolean 参数后，#2 返回 SUCCESS。旧任务定义和部署文件已备份到 `runtime/backups/`。
+- `runtime/state/images.env` 和 `runtime/state/rpc-e74d2e484e9328beed7886a1662acfc0f529551c.json` 保存此次发布状态。没有部署云端 Web，没有开启 `ENABLE_DEPLOY`。
+- AWS MySQL 从空业务库初始化 11 张表。商品 SQL 校验固定 SHA256，剔除 5 条 DROP；导入 420 件商品、113 个品牌、369 个分类、1801 条分类品牌关系，并为每件商品建立初始库存 100。banner 原始数据为空。
+- 创建了一个普通演示账号，密码用现有 RPC 哈希逻辑写入。留下商品 421、数量 1 的购物车；没有创建订单。账号、token 仅保存于 Mac Web 仓库被忽略的 `.local/`，不进入此记录。
+- Nacos 新增三个 Web 的 **local** 分组，dev 逐项验证未变。Mac 使用 RPC/Redis SSH 隧道地址；云端仍用 Docker DNS。启动方法见配套 Web 仓库 `LOCAL_DEVELOPMENT.md`。
+
+| RPC | 容器与 Consul 检查地址 | Consul 服务名 | Mac 隧道 |
+| --- | --- | --- | --- |
+| 用户 | `user-srv:50051` | `user-srv` | `127.0.0.1:15051` |
+| 商品 | `goods-srv:50052` | `goods-srv` | `127.0.0.1:15052` |
+| 库存 | `inventory-srv:50053` | `inventory-srv` | `127.0.0.1:15053` |
+| 订单 | `order-srv:50054` | `orders-srv` | `127.0.0.1:15054` |
+
+四个宿主机 RPC 端口只绑定 AWS `127.0.0.1`；本次未新增公网入站规则。Consul 检查从容器网络访问上表地址，标准容器探针则检查自身回环地址；两者均已实测成功。
 
 ## 服务器与资源
 
@@ -24,7 +43,7 @@
 
 Nacos 的 HTTP 端口已按用户要求改为公网直连：[http://98.83.120.128:8848/nacos/](http://98.83.120.128:8848/nacos/)。AWS 安全组 `sg-01a6adef2222761c1`（launch-wizard）的 TCP 8848 当前允许两个来源：原有 `42.61.2.190/32`（规则 `sgr-0c1eef2046c19176d`）保持不变；2026-09-17 新增当前 Mac 出口 `137.132.26.103/32`（规则 `sgr-0b8c99a0962db2e85`）。新增后从 Mac 直连控制台返回 HTTP 200。如果 Mac 换网络导致公网 IP 改变，需为新来源添加规则；保留旧规则需遵循用户要求。如果 EC2 公网 IP 改变，需更新浏览器访问地址。
 
-服务器 `.env` 设置 `NACOS_HTTP_BIND_ADDRESS=0.0.0.0` 和 `NACOS_GRPC_BIND_ADDRESS=0.0.0.0`，仅重建 Nacos 容器，命名卷保留。TCP 9848 新增来源 `137.132.26.103/32`（规则 `sgr-0a677fd979f814c51`），供 Mac 的 Nacos Go SDK v2 使用；原有两条 8848 规则均保留。其他组件仍绑定 `127.0.0.1`。以下管理页面也可通过原有 SSH 隧道访问：
+服务器 `.env` 设置 `NACOS_HTTP_BIND_ADDRESS=0.0.0.0` 和 `NACOS_GRPC_BIND_ADDRESS=0.0.0.0`，仅重建 Nacos 容器，命名卷保留。TCP 9848 新增来源 `137.132.26.103/32`（规则 `sgr-0a677fd979f814c51`），供 Mac 的 Nacos Go SDK v2 使用；原有两条 8848 规则均保留。其他组件仍绑定 `127.0.0.1`。以下管理页面需要对应 SSH 隧道。当前 Web 开发隧道已占用 Mac 18500；另开管理隧道时不要重复绑定该端口：
 
 | 组件 | Mac 浏览器入口 | 账号 |
 | --- | --- | --- |
@@ -52,15 +71,14 @@ ssh -S /Users/outsider/.ssh/grpctest-aws-98.93.115.75.ctl -O check ubuntu@98.93.
 ssh -S /Users/outsider/.ssh/grpctest-aws-98.93.115.75.ctl -O exit ubuntu@98.93.115.75
 ```
 
-确认旧隧道已关闭后，在 Mac 终端重新连接；此命令会占用当前终端，按 Ctrl-C 关闭隧道：
+需要 Jenkins/Nacos 管理隧道时，在 Mac 终端另行连接；此命令会占用当前终端，按 Ctrl-C 关闭隧道。Consul 的 18500 由 Web 开发隧道提供：
 
 ```bash
 ssh -i /Users/outsider/Downloads/Golang_Development/grpctest.pem \
   -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
   -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
   -N -L 127.0.0.1:18080:127.0.0.1:8080 \
-  -L 127.0.0.1:18848:127.0.0.1:8848 \
-  -L 127.0.0.1:18500:127.0.0.1:8500 ubuntu@98.83.120.128
+  -L 127.0.0.1:18848:127.0.0.1:8848 ubuntu@98.83.120.128
 ```
 
 ## 已完成
@@ -90,9 +108,9 @@ ssh -i /Users/outsider/Downloads/Golang_Development/grpctest.pem \
 
 历史配置核对时，七个入口都支持 `MXSHOP_CONFIG_FILE`，并曾使用 `/run/config/nacos.yaml` 挂载。用户当时修改的 Nacos 账户密码已同步到源码 YAML、服务器 `.env` 和 14 份 runtime bootstrap；记录时未启动业务镜像。
 
-当前源码已有变化：四个 RPC 保留该覆盖路径；三个 Web 已删除覆盖逻辑，本地 Compose 改为只读挂载 `/app/<服务>/config-debug.yaml`。RPC 探针改用 `grpc_health_probe`，Web 改用 `wget /health`。这些文件尚未同步线上，不能把历史配置核对当作新版本部署验收。
+当前源码已有变化：四个 RPC 保留该覆盖路径；三个 Web 已删除覆盖逻辑，本地 Compose 改为只读挂载 `/app/<服务>/config-debug.yaml`。RPC 探针改用 `grpc_health_probe`，Web 改用 `wget /health`。这些文件现已同步线上；四个 RPC 已通过实际发布验收。Web Compose 的挂载/探针已核对，但云端 Web 未启动。
 
-同时修正库存 `config-pro.yaml` 误用商品 Data ID，以及订单初始化器引用库存 global 和库存配置文件路径的问题。当时订单其他编译问题尚待处理；当前本地已完成基础构建与启动修补，交易流程仍未启用。源码 debug/pro YAML 已改为公网直连 Nacos，本机用 `MXSHOP_DEBUG=true` 读取 dev；此前额外的 `config-aws.local.yaml` 和双端口本机隧道已移除；`model/main` 和 `consul_test` 下的旧独立示例未用于本次部署，不能当成云端初始化脚本直接执行。
+同时修正库存 `config-pro.yaml` 误用商品 Data ID，以及订单初始化器引用库存 global 和库存配置文件路径的问题。当时订单其他编译问题尚待处理；当前本地已完成基础构建与启动修补，交易流程仍未启用。源码 debug/pro YAML 已改为公网直连 Nacos，本机 Web 默认 debug 读取 local，RPC 源码的 debug 仍读取 dev；此前额外的 `config-aws.local.yaml` 和双端口本机隧道已移除；`model/main` 和 `consul_test` 下的旧独立示例未用于本次部署，不能当成云端初始化脚本直接执行。
 
 服务器查看状态：
 
@@ -105,12 +123,11 @@ sudo docker stats --no-stream
 
 安装日志：`/var/log/grpctest-install.log`；首次启动日志：`/var/log/grpctest-stack.log`。停止容器时不要使用带 `-v` 的 down 命令，否则会删除数据卷。
 
-## 业务上线前仍需完成
+## 仍需完成
 
-1. 将本地基础修复与配置挂载变更在隔离环境完成发布验收；订单当前 `CreateOrder` 返回 `FailedPrecondition`，不能作为可交易服务上线。
-2. 初始化四个业务库的表结构及必要数据；历史检查时表数为 0，本轮未重新读取。旧商品 SQL 含 DROP TABLE，未自动执行。
-3. 按原计划 04–06 完成库存数据库事务/幂等、订单 MQ/恢复与支付竞争处理，并补齐实际使用的配置；Redis 锁仅为可选的竞争控制。
-4. 后续配置 GitHub Secrets、GHCR 拉取权限和可达服务器的 runner；完成交易与部署验收后再考虑开启 `ENABLE_DEPLOY`。本轮提交不配置这些远端项目。
-5. 首次发布业务容器，验证实际业务流程与失败恢复；健康探针通过不代表交易流程正确。
+1. 按原计划 04–06 完成库存事务/幂等、订单 MQ/恢复与支付竞争处理。当前 CreateOrder 在写库、扣库存前返回 FailedPrecondition，不能作为可交易服务上线。
+2. 本次空库 bootstrap 是当前模型的显式基线；未来结构演进要新增迁移，不能改已导入的 SQL 后重灌现有数据。隔离环境、迁移版本管理和完整 seed 仍按批次 01 验收。
+3. 配置 GitHub Secrets、私有 GHCR 读取权限和 runner 网络，才可开启自动部署；本次 Jenkins 手动发布不等于 Actions→Jenkins 已接通。
+4. 认证、短信、支付、完整业务回归与真实容器更新/回退仍待对应批次验收。Mac 已通过的登录/商品/购物车不代替交易与恢复测试。
 
 Jenkins 通过 Docker socket 拥有主机控制能力，限本人可信任务使用。当前为单机学习环境；没有配置异机备份或高可用。
