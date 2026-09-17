@@ -1,0 +1,112 @@
+name: grpctest-apps
+x-app: &app
+  restart: unless-stopped
+  networks: [backend]
+  environment:
+    MXSHOP_DEBUG: "true"
+    MXSHOP_CONFIG_FILE: /run/config/nacos.yaml
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+services:
+  user-srv:
+    <<: *app
+    profiles: [rpc]
+    image: ${USER_SRV_IMAGE:-ghcr.io/qqawer/grpctest-user_srv:unreleased}
+    volumes:
+      - ${RUNTIME_DIR}/config/user_srv/config-debug.yaml:/run/config/nacos.yaml:ro
+    command: ["-ip", "0.0.0.0", "-port", "50051"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=127.0.0.1:50051", "-connect-timeout=2s", "-rpc-timeout=2s"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+  goods-srv:
+    <<: *app
+    profiles: [rpc]
+    image: ${GOODS_SRV_IMAGE:-ghcr.io/qqawer/grpctest-goods_srv:unreleased}
+    volumes:
+      - ${RUNTIME_DIR}/config/goods_srv/config-debug.yaml:/run/config/nacos.yaml:ro
+    command: ["-ip", "0.0.0.0", "-port", "50052"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=127.0.0.1:50052", "-connect-timeout=2s", "-rpc-timeout=2s"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+  inventory-srv:
+    <<: *app
+    profiles: [rpc]
+    image: ${INVENTORY_SRV_IMAGE:-ghcr.io/qqawer/grpctest-inventory_srv:unreleased}
+    volumes:
+      - ${RUNTIME_DIR}/config/inventory_srv/config-debug.yaml:/run/config/nacos.yaml:ro
+    command: ["-ip", "0.0.0.0", "-port", "50053"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=127.0.0.1:50053", "-connect-timeout=2s", "-rpc-timeout=2s"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+  order-srv:
+    <<: *app
+    profiles: [rpc]
+    image: ${ORDER_SRV_IMAGE:-ghcr.io/qqawer/grpctest-order_srv:unreleased}
+    volumes:
+      - ${RUNTIME_DIR}/config/order_srv/config-debug.yaml:/run/config/nacos.yaml:ro
+    command: ["-ip", "0.0.0.0", "-port", "50054"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=127.0.0.1:50054", "-connect-timeout=2s", "-rpc-timeout=2s"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+  user-web:
+    <<: *app
+    environment:
+      MXSHOP_DEBUG: "true"
+    profiles: [web]
+    image: ${USER_WEB_IMAGE:-ghcr.io/qqawer/grpctest_web-user-web:unreleased}
+    volumes:
+      - ${RUNTIME_DIR}/config/user-web/config-debug.yaml:/app/user-web/config-debug.yaml:ro
+    ports: ["127.0.0.1:8021:8021"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "3", "-O", "/dev/null", "http://127.0.0.1:8021/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+  goods-web:
+    <<: *app
+    environment:
+      MXSHOP_DEBUG: "true"
+    profiles: [web]
+    image: ${GOODS_WEB_IMAGE:-ghcr.io/qqawer/grpctest_web-goods-web:unreleased}
+    volumes:
+      - ${RUNTIME_DIR}/config/goods-web/config-debug.yaml:/app/goods-web/config-debug.yaml:ro
+    ports: ["127.0.0.1:8022:8022"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "3", "-O", "/dev/null", "http://127.0.0.1:8022/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+  order-web:
+    <<: *app
+    environment:
+      MXSHOP_DEBUG: "true"
+    profiles: [web]
+    image: ${ORDER_WEB_IMAGE:-ghcr.io/qqawer/grpctest_web-order-web:unreleased}
+    volumes:
+      - ${RUNTIME_DIR}/config/order-web/config-debug.yaml:/app/order-web/config-debug.yaml:ro
+    ports: ["127.0.0.1:8023:8023"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "3", "-O", "/dev/null", "http://127.0.0.1:8023/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+networks:
+  backend:
+    name: grpctest-backend
+    external: true

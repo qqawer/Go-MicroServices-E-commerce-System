@@ -1,0 +1,19 @@
+pipeline {
+    agent any
+    options {
+        disableConcurrentBuilds()
+        timeout(time: 15, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+        skipDefaultCheckout(true)
+    }
+    stages {
+        stage('Deploy verified image digests') {
+            steps {
+                sh '''#!/bin/bash
+set -euo pipefail
+python3 "$DEPLOY_ROOT/scripts/release.py" "$GROUP" "$REVISION"
+'''
+            }
+        }
+    }
+}

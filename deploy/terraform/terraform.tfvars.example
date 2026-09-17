@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars and fill the first four values before running plan.
+aws_region          = "ap-southeast-1"
+aws_account_id      = "YOUR_12_DIGIT_AWS_ACCOUNT_ID"
+admin_cidr          = "YOUR_PUBLIC_IPV4/32"
+ssh_public_key_path = "~/.ssh/grpctest-aws.pub"
+
+name          = "grpctest-demo"
+instance_type = "t3.large"
+disk_gib      = 60

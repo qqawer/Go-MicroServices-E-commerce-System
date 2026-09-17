@@ -1,0 +1,119 @@
+name: grpctest-infra
+
+x-defaults: &defaults
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+  networks: [backend]
+
+services:
+  mysql:
+    <<: *defaults
+    image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?run init-env.py}
+      MYSQL_DATABASE: grpctest_user_srv
+      MYSQL_USER: grpctest
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?run init-env.py}
+    command: ["--innodb-buffer-pool-size=256M", "--max-connections=150"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/01-databases.sql:/docker-entrypoint-initdb.d/01-databases.sql:ro
+    ports: ["127.0.0.1:3306:3306"]
+    healthcheck:
+      test: ["CMD-SHELL", 'MYSQL_PWD="$$MYSQL_ROOT_PASSWORD" mysql -h 127.0.0.1 -uroot -Nse "SELECT 1" >/dev/null']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  redis:
+    <<: *defaults
+    image: redis:7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?run init-env.py}
+    command: ["sh", "-ec", 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD" --maxmemory 256mb --maxmemory-policy noeviction']
+    volumes: ["redis-data:/data"]
+    ports: ["127.0.0.1:6379:6379"]
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  nacos:
+    <<: *defaults
+    image: nacos/nacos-server:v2.5.1@sha256:8987908cb94ed5f9d30522a64493d35732a6c05f216d667a7addb022f3d92e80
+    environment:
+      MODE: standalone
+      PREFER_HOST_MODE: hostname
+      JVM_XMS: 512m
+      JVM_XMX: 768m
+      JVM_XMN: 256m
+      NACOS_AUTH_ENABLE: "true"
+      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:?run init-env.py}
+      NACOS_AUTH_IDENTITY_KEY: grpctestIdentity
+      NACOS_AUTH_IDENTITY_VALUE: ${NACOS_IDENTITY_VALUE:?run init-env.py}
+    volumes:
+      - nacos-data:/home/nacos/data
+      - nacos-logs:/home/nacos/logs
+    # For direct client access, bind the needed ports and restrict their sources in the AWS security group.
+    ports: ["${NACOS_HTTP_BIND_ADDRESS:-127.0.0.1}:8848:8848", "${NACOS_GRPC_BIND_ADDRESS:-127.0.0.1}:9848:9848"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8848/nacos/v1/console/health/readiness >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  consul:
+    <<: *defaults
+    image: hashicorp/consul:1.21@sha256:6126c30072690cb3173a450ff5bde120c3a01e11c9dccab83b1b2314d4c828bd
+    command: ["agent", "-server", "-bootstrap-expect=1", "-ui", "-client=0.0.0.0", "-data-dir=/consul/data", "-node=grpctest-consul"]
+    volumes: ["consul-data:/consul/data"]
+    ports: ["127.0.0.1:8500:8500"]
+    healthcheck:
+      test: ["CMD-SHELL", "consul operator raft list-peers | grep -q leader"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  jenkins:
+    <<: *defaults
+    profiles: [ci]
+    build: ./jenkins
+    # Personal, trusted deployment job only: Docker socket grants host control.
+    user: "0:0"
+    environment:
+      JAVA_OPTS: -Djenkins.install.runSetupWizard=false -Xms256m -Xmx768m
+      DEPLOY_ROOT: ${DEPLOY_ROOT:?run init-env.py}
+    ports: ["127.0.0.1:8080:8080"]
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DEPLOY_ROOT}:${DEPLOY_ROOT}
+    secrets: [jenkins_admin_password, jenkins_actions_password]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/login >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+secrets:
+  jenkins_admin_password:
+    file: ${RUNTIME_DIR}/secrets/jenkins_admin_password
+  jenkins_actions_password:
+    file: ${RUNTIME_DIR}/secrets/jenkins_actions_password
+
+networks:
+  backend:
+    name: grpctest-backend
+volumes:
+  mysql-data:
+  redis-data:
+  nacos-data:
+  nacos-logs:
+  consul-data:
+  jenkins-data:
