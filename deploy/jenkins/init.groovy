@@ -30,6 +30,7 @@ job.setDefinition(new CpsFlowDefinition(new File('/usr/share/jenkins/ref/grpctes
 job.addProperty(new ParametersDefinitionProperty(
     new ChoiceParameterDefinition('GROUP', ['rpc', 'web'] as String[], 'Which repository to deploy'),
     new StringParameterDefinition('REVISION', '', 'Full 40-character Git commit SHA'),
+    new BooleanParameterDefinition('PRELOADED', false, 'Use already imported immutable image IDs; verify source/revision/service labels'),
     new TextParameterDefinition('IMAGES_JSON', '{}', 'Service names mapped to GHCR image digests')
 ))
 job.save()

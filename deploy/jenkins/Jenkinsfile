@@ -11,7 +11,9 @@ pipeline {
             steps {
                 sh '''#!/bin/bash
 set -euo pipefail
-python3 "$DEPLOY_ROOT/scripts/release.py" "$GROUP" "$REVISION"
+args=("$GROUP" "$REVISION")
+if [[ "${PRELOADED:-false}" == true ]]; then args+=(--preloaded); fi
+python3 "$DEPLOY_ROOT/scripts/release.py" "${args[@]}"
 '''
             }
         }

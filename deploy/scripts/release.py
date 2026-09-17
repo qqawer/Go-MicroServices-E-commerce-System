@@ -23,9 +23,10 @@ def run(args, capture=False):
     return subprocess.run(args, check=True, text=True, stdout=subprocess.PIPE if capture else None)
 
 def main():
-    if len(sys.argv) != 3 or sys.argv[1] not in GROUPS or not re.fullmatch(r'[0-9a-f]{40}', sys.argv[2]):
-        raise ValueError('Usage: release.py rpc|web FULL_COMMIT_SHA; set IMAGES_JSON')
-    group, revision = sys.argv[1:]
+    preloaded = len(sys.argv) == 4 and sys.argv[3] == '--preloaded'
+    if (len(sys.argv) != 3 and not preloaded) or sys.argv[1] not in GROUPS or not re.fullmatch(r'[0-9a-f]{40}', sys.argv[2]):
+        raise ValueError('Usage: release.py rpc|web FULL_COMMIT_SHA [--preloaded]; set IMAGES_JSON')
+    group, revision = sys.argv[1:3]
     repo, services = GROUPS[group]
     settings = env_file(ROOT / '.env')
     owner = settings['GHCR_OWNER']
@@ -37,7 +38,17 @@ def main():
     for service, image in images.items():
         directory = service.replace('-srv', '_srv') if group == 'rpc' else service
         prefix = f'ghcr.io/{owner}/{repo}-{directory}@sha256:'
-        if not isinstance(image, str) or not re.fullmatch(re.escape(prefix) + r'[0-9a-f]{64}', image):
+        if preloaded:
+            if not isinstance(image, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', image):
+                raise ValueError('Preloaded releases require immutable local image IDs')
+            inspected = json.loads(run(['docker', 'image', 'inspect', image], capture=True).stdout)[0]
+            labels = inspected.get('Config', {}).get('Labels') or {}
+            if (inspected.get('Id') != image or
+                    labels.get('org.opencontainers.image.source') != f'https://github.com/{owner}/{repo}' or
+                    labels.get('org.opencontainers.image.revision') != revision or
+                    labels.get('io.grpctest.service') != directory):
+                raise ValueError('Preloaded image does not match the requested repository, revision and service')
+        elif not isinstance(image, str) or not re.fullmatch(re.escape(prefix) + r'[0-9a-f]{64}', image):
             raise ValueError('Manifest contains an unexpected repository or digest')
     runtime = Path(settings['RUNTIME_DIR'])
     state = runtime / 'state'
@@ -83,7 +94,8 @@ def main():
         try:
             run(compose(new_env) + ['config', '--quiet'])
             # Pull all images before touching any running container.
-            run(compose(new_env) + ['pull', *services])
+            if not preloaded:
+                run(compose(new_env) + ['pull', *services])
             for service in services:
                 ids = run(compose(old_env) + ['ps', '-aq', service], capture=True).stdout.split()
                 if ids:
@@ -91,7 +103,7 @@ def main():
                         raise ValueError('Unmanaged existing application containers found; adopt them explicitly first')
                     old_services.append(service)
             try:
-                run(compose(new_env) + ['up', '-d', '--no-deps', '--wait', '--wait-timeout', '180', *services])
+                run(compose(new_env) + ['up', '-d', '--no-deps', '--pull', 'never', '--wait', '--wait-timeout', '180', *services])
             except subprocess.CalledProcessError:
                 print('Deployment failed. Restoring the previous release.', file=sys.stderr)
                 new_services = [service for service in services if service not in old_services]
@@ -102,7 +114,7 @@ def main():
                 raise
             # Commit desired state only after Compose reports all services healthy.
             os.replace(new_env, release_file)
-            record = {'group': group, 'revision': revision, 'images': images}
+            record = {'group': group, 'revision': revision, 'images': images, 'source': 'preloaded' if preloaded else 'ghcr'}
             (state / f'{group}-{revision}.json').write_text(json.dumps(record, indent=2) + '\n')
             print(f'{group} {revision}: containers passed startup health checks (not business tests).')
         finally:
