@@ -72,6 +72,8 @@ RPC 容器使用镜像提供的 `grpc_health_probe`，检查 `127.0.0.1:50051`�
 | RPC 注册地址 | `user-srv:50051`、`goods-srv:50052`、`inventory-srv:50053`、`order-srv:50054` |
 | Consul 服务名 | `user-srv`、`goods-srv`、`inventory-srv`、`orders-srv` |
 
+本地数据库插件需要公网直连 MySQL 时，在服务器 `.env` 设置 `MYSQL_BIND_ADDRESS=0.0.0.0`，并在 AWS 安全组仅向客户端公网 IPv4 `/32` 放行 TCP 3306。执行 `sudo docker compose --env-file .env -f compose.yaml up -d --no-deps --pull never --wait mysql` 应用端口映射，保留原 `mysql-data` 卷。插件连接 EC2 公网 IP、3306，使用 `grpctest` 及现有 MySQL 应用密码；云端 RPC 仍连接 `mysql:3306`，Nacos 配置无需修改。
+
 注册地址是容器 DNS 名，服务名是发现时查询的标识，两者可以不同。新的云端配置统一使用 `inventory-srv`，不要混用旧导出中的 `inevntory-srv`。应用的 Nacos SDK 已接入 bootstrap 中的用户名和密码。
 
 四个业务库分别为 `grpctest_user_srv`、`grpctest_goods_srv`、`grpctest_inventory_srv`、`grpctest_orders_srv`。部署前需准备表结构与业务数据，并完成订单交易与恢复验证；目前不启用应用自动部署。不要直接执行旧 `model/main` 工具，它们仍有写死的数据库地址和凭据。
@@ -116,7 +118,7 @@ sudo docker compose --profile ci exec jenkins docker login ghcr.io -u qqawer
 
 登录配置会保存在 Jenkins 数据卷中。不要使用 Actions 临时的 `GITHUB_TOKEN` 作为服务器长期凭据，也不要把 PAT 写进 Compose 或仓库。
 
-本方案为了单机学习方便，Jenkins 用 root 访问 Docker socket，因此部署任务拥有这台主机的控制能力。仅用于本人可信仓库；不要开放给不可信 PR 或其他用户运行任意任务。正式环境应拆分控制器与受限部署节点。MySQL/Consul/Jenkins 只发布到宿主机回环地址。RPC/Redis 默认绑定回环地址；本机需要直连时，在服务器 .env 设置 RPC_BIND_ADDRESS=0.0.0.0、REDIS_BIND_ADDRESS=0.0.0.0，并在安全组仅对 Mac 公网 IPv4 /32 放行 TCP 50051–50054、6379。更新映射需要重建对应容器，Redis 数据卷保留。Nacos HTTP 可按上文单独启用受来源 IP 限制的公网访问；Consul 暂不配置 ACL，依赖隔离的内部网络。
+本方案为了单机学习方便，Jenkins 用 root 访问 Docker socket，因此部署任务拥有这台主机的控制能力。仅用于本人可信仓库；不要开放给不可信 PR 或其他用户运行任意任务。正式环境应拆分控制器与受限部署节点。Consul/Jenkins 只发布到宿主机回环地址。MySQL/RPC/Redis 默认绑定回环地址；本机需要直连时，在服务器 .env 将对应 MYSQL_BIND_ADDRESS、RPC_BIND_ADDRESS、REDIS_BIND_ADDRESS 设为 0.0.0.0，并在安全组仅对 Mac 公网 IPv4 /32 放行对应 TCP 3306、50051–50054、6379。更新映射需要重建对应容器，数据卷保留。Nacos HTTP 可按上文单独启用受来源 IP 限制的公网访问；Consul 暂不配置 ACL，依赖隔离的内部网络。
 
 ### 无私有 GHCR 拉取凭据时的手动发布
 

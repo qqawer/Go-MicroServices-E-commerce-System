@@ -2,6 +2,12 @@
 
 2026-09-17 已通过 SSH 连接服务器，初始化业务数据，并由 Jenkins `grpctest-deploy #2` 成功发布四个 RPC。当前五个基础组件、四个 RPC 容器均正常；Consul 的四项 gRPC 检查均 passing。随后按用户要求改为 Mac 公网直连：Jenkins #3 应用 RPC 端口映射并成功，Redis 映射重建后健康；关闭开发隧道后真实接口复验通过。完整下单和自动 Actions 部署仍未完成。下面资源容量和旧安全组规则保留各自记录时的快照。
 
+## 2026-09-19 MySQL 端口映射更新
+
+按用户要求，Compose 增加 `MYSQL_BIND_ADDRESS`（仓库默认 `127.0.0.1`），服务器 `.env` 设置为 `0.0.0.0`，仅重建 MySQL 容器。实际映射已为 `0.0.0.0:3306`，容器 healthy；镜像、原 `grpctest-infra_mysql-data` 卷和全部 11 张业务表行数保持不变。通过服务器私网地址使用 `grpctest` 账号执行 `SELECT 1` 成功，其他容器未重建，四个 RPC 的 Consul 检查均 passing。旧配置及前后验证结果保存在 `runtime/backups/mysql-direct-20260919T063725Z/`。
+
+端口映射切换时未修改 AWS 安全组或 Nacos 配置，Mac 公网出口为 `42.61.2.190`，首次直连公网 3306 超时。随后从同一 Mac 使用 `grpctest` 账号直连 `98.83.120.128:3306` 成功，并确认四个业务库可访问；管理员凭据更新后，也已验证 `root` 公网登录，容器配置同步且业务账号未变。实际密码仅保存在服务器和本地私密文件中，不进入 Git。Consul 仍仅绑定服务器 `127.0.0.1:8500`，其 `/ui/` 在服务器内返回 HTTP 200。
+
 ## 本次已上线的内容
 
 - RPC 镜像对应提交 `e74d2e484e9328beed7886a1662acfc0f529551c`，Linux amd64；Go 业务源码未额外修改。部署脚本和 Compose 同步到 `/opt/grpctest/deploy`。
@@ -45,7 +51,7 @@
 
 Nacos 的 HTTP 端口已按用户要求改为公网直连：[http://98.83.120.128:8848/nacos/](http://98.83.120.128:8848/nacos/)。AWS 安全组 `sg-01a6adef2222761c1`（launch-wizard）的 TCP 8848 当前允许两个来源：原有 `42.61.2.190/32`（规则 `sgr-0c1eef2046c19176d`）保持不变；2026-09-17 新增当前 Mac 出口 `137.132.26.103/32`（规则 `sgr-0b8c99a0962db2e85`）。新增后从 Mac 直连控制台返回 HTTP 200。如果 Mac 换网络导致公网 IP 改变，需为新来源添加规则；保留旧规则需遵循用户要求。如果 EC2 公网 IP 改变，需更新浏览器访问地址。
 
-服务器 `.env` 设置 `NACOS_HTTP_BIND_ADDRESS=0.0.0.0` 和 `NACOS_GRPC_BIND_ADDRESS=0.0.0.0`，仅重建 Nacos 容器，命名卷保留。TCP 9848 新增来源 `137.132.26.103/32`（规则 `sgr-0a677fd979f814c51`），供 Mac 的 Nacos Go SDK v2 使用；原有两条 8848 规则均保留。上述是 Nacos 变更记录；后续 RPC/Redis 对外映射见本文件开头。MySQL、Consul、Jenkins 仍绑定回环地址。开发隧道已关闭，以下管理页面可按需通过单独的管理隧道访问：
+服务器 `.env` 设置 `NACOS_HTTP_BIND_ADDRESS=0.0.0.0` 和 `NACOS_GRPC_BIND_ADDRESS=0.0.0.0`，仅重建 Nacos 容器，命名卷保留。TCP 9848 新增来源 `137.132.26.103/32`（规则 `sgr-0a677fd979f814c51`），供 Mac 的 Nacos Go SDK v2 使用；原有两条 8848 规则均保留。上述是 Nacos 变更记录；后续 RPC/Redis 对外映射见本文件开头。Consul、Jenkins 仍绑定回环地址；MySQL 已于 2026-09-19 更新绑定，见上方记录。开发隧道已关闭，以下管理页面可按需通过单独的管理隧道访问：
 
 | 组件 | Mac 浏览器入口 | 账号 |
 | --- | --- | --- |
