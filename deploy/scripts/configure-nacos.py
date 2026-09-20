@@ -46,7 +46,7 @@ def main():
         if domain == 'user':
             config.update(user_srv={'name': 'user-srv', 'host': 'user-srv', 'port': 50051},
                           redis={'host': 'redis', 'port': 6379, 'password': settings['REDIS_PASSWORD'], 'db': 0, 'pool_size': 10},
-                          ali_sms={'key': '', 'secret': '', 'expire': 300})
+                          ali_sms={'key': '', 'secret': '', 'sign_name': '', 'template_code': '', 'expire': 300})
         else:
             config['goods_srv'] = {'name': 'goods-srv'}
         if domain == 'order':
