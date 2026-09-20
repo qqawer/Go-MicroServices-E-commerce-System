@@ -2,6 +2,15 @@
 
 本文件保留不同时间的验证结果；旧代码的检查结论不自动适用于本次提交。当前本地修复已使订单 RPC 恢复构建，交易依赖仍未启用，`CreateOrder` 返回 `FailedPrecondition`。2026-09-17 最新一轮已连接 AWS 并完成首次 RPC 发布及 Mac Web 联调，见下方记录；较早的离线验证另行保留。
 
+## 2026-09-20 独立测试环境、迁移与 CI 回归
+
+- 两仓 `bash ci/check.sh` 通过：4 个 RPC / 3 个 Web 生产入口 readonly 构建，既有订单与 Web 配置回归启用 race。
+- `python3 tests/integration/run.py` 完整通过：独立 MySQL 8.0/Redis 7.4；11 表基线、seed 事务失败回滚、重复执行保留改动数据、迁移/seed 摘要与未知版本保护、并发迁移只执行一次、失败 DDL dirty 阻断、显式重建恢复。
+- 真正经过 gRPC 编解码和 MySQL 的用户创建/密码验证、商品列表关联与图片 JSON、库存查询、购物车增改删回归均通过；Redis 临时端口认证/PING 通过。用户密码测试保留生产 bcrypt cost 14，race 下改为每次 RPC 独立期限。
+- 保护性检查通过：同名无归属卷不被复用或删除，错误 marker/非本机数据库被拒绝，缺失初始化 SQL 可以重建。全部本轮临时测试容器、网络和数据卷已清理，没有访问或修改 AWS。
+- 两仓 workflow 已加入 checks 前置门禁。以上为提交前的本地验收记录，GitHub 远端结果以对应提交的 Actions 运行记录为准；线上部署开关保持原样。
+- 当前只管理带 marker 的独立测试库。AWS 存量库尚未纳入迁移记录；没有验证生产升级/回滚、完整 Nacos/Consul 启动或 HTTP 端到端流程，验证码/短信/JWT 权限与交易修复仍按后续批次执行。说明见 [tests/README.md](../tests/README.md)。
+
 ## 2026-09-17 追加：关闭开发隧道后的公网直连验收
 
 - AWS 安全组新增 TCP 50051–50054、6379 两条规则，来源 137.132.26.103/32；界面成功回显并确认原 5 条入站规则保留。
@@ -24,7 +33,7 @@
 
 ## 2026-09-17 当前提交离线验证
 
-- 四个 RPC 的 readonly 构建与 Linux amd64 镜像构建通过；订单本地回归测试含 `-race` 通过。这些是本地检查，当前镜像发布 workflow 不运行 `go test`。
+- 四个 RPC 的 readonly 构建与 Linux amd64 镜像构建通过；订单本地回归测试含 `-race` 通过。这些是本地检查，当时的镜像发布 workflow 不运行 `go test`；2026-09-20 的更新见上方。
 - Actions workflow 经 actionlint 检查；Jenkins 触发脚本的五项离线预检通过。GitHub 只读检查确认 `ENABLE_DEPLOY` 未配置、`aws` Environment 尚未创建，未启用自动部署。
 - 在私有临时目录生成配置，验证 `.env` 权限为 `0600`、重复初始化拒绝覆盖；Nacos 配置生成器准备七份 JSON，仅运行本地生成路径，没有调用 Nacos API。临时目录随后移除。
 - 两份 Compose 经 `docker compose config --format json` 校验。逐项断言四个 RPC 的 `grpc_health_probe` 端口和参数、三个 Web 的 `wget /health` 与 `/app/<服务>/config-debug.yaml` 只读挂载；Web 不设置 `MXSHOP_CONFIG_FILE`。基础设施默认发布端口仍绑定 `127.0.0.1`。
@@ -58,7 +67,7 @@
 
 当时订单 RPC 的 `go build -mod=readonly ./order_srv` 失败，首先报告需要更新 go.mod；静态检查还能看到既有错误导入、混合 package、错误 gRPC 注册等。工作流没有忽略该服务，发布会按设计被阻断。
 
-当时未增加或运行业务 `go test` 阶段；原有 JWT 测试文件后来按用户要求删除。本轮订单本地回归检查与旧记录、CI 流水线分开报告，当前镜像发布 workflow 不运行 `go test`。
+当时未增加或运行业务 `go test` 阶段；原有 JWT 测试文件后来按用户要求删除。本轮订单本地回归检查与旧记录、CI 流水线分开报告，当时的镜像发布 workflow 不运行 `go test`。
 
 ## Terraform 自动创建服务器
 

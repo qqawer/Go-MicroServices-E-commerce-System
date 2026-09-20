@@ -6,6 +6,7 @@
 
 ```text
 两个仓库分别 push main
+  → 构建生产入口并执行回归；RPC 额外验证独立 MySQL/Redis、迁移与 seed
   → GitHub Actions 编译各服务并构建 linux/amd64 镜像
   → 推送 GHCR，收集每个镜像的 sha256 digest
   → SSH 隧道访问服务器本机的 Jenkins
@@ -14,12 +15,12 @@
   → 成功：记录版本；失败：尝试恢复上一组容器
 ```
 
-PR 只构建，不推送、不部署。不配置 `go test`、覆盖率或业务集成测试。镜像内的 `go build -mod=readonly` 必须成功。`/health` 和 gRPC health 是启动检查，不证明登录、库存扣减、下单和支付业务正确。
+PR 执行检查和镜像构建，不推送、不部署。两仓先运行 `ci/check.sh` 的生产入口构建与 Go race 回归；RPC 再执行独立 MySQL/Redis 的迁移和集成验证，全部通过后才构建镜像。操作和边界见 [独立测试说明](../tests/README.md)。`/health` 和 gRPC health 是启动检查，不证明登录、库存扣减、下单和支付业务正确。
 
 ## 当前状态与限制
 
 - 已提供 MySQL、Redis、Nacos、Consul、Jenkins，以及四个 RPC / 三个 Web 服务的部署配置。
-- `grpctest_web` 的三个 `jwt_test.go` 已按要求删除；流水线保留编译与启动健康检查。
+- `grpctest_web` 的三个 `jwt_test.go` 已按要求删除且未恢复；流水线现在执行既有配置回归，完整 JWT 权限修复仍在下一批。
 - 订单 RPC 已完成基础构建与启动接线修复；当前交易依赖没有启用，`CreateOrder` 返回 `FailedPrecondition`。库存幂等、事务消息、恢复任务与支付竞争仍按原计划 04–06 实施，不能把编译或探针成功当作交易链路完成。
 - MySQL 首次启动只创建四个空库和业务账号。新增显式空库初始化脚本校验商品 SQL 并移除 DROP，再创建当前模型的业务表和示例库存；有数据时拒绝覆盖，见第 2 节。发布脚本仍只检查各库是否存在表，不代替版本化迁移。
 - Nacos 脚本提供七份新的云端 dev 配置，不覆盖已有在线配置。短信与支付宝凭据留空；MQ 配置和消费者在交易阶段接入。库存正确性由后续数据库事务与约束保证，Redis 锁仅为可选的竞争控制，不作为本轮部署前提补入。

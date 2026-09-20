@@ -15,7 +15,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.25.6'
+          cache: true
+      - name: Build production services and run isolated regressions
+        run: bash ci/check.sh
+      - name: Verify migrations and fixtures in disposable MySQL
+        run: python3 tests/integration/run.py
+
   images:
+    needs: checks
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -40,7 +55,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Compile and build image (no go test)
+      - name: Compile and build image
         id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
