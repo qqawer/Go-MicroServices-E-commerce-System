@@ -1,0 +1,46 @@
+services:
+  mysql:
+    image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+    environment:
+      MYSQL_ROOT_PASSWORD: ${TEST_MYSQL_ROOT_PASSWORD:?use tests/env.py}
+      MYSQL_DATABASE: grpctest_user_srv
+      MYSQL_USER: grpctest
+      MYSQL_PASSWORD: ${TEST_MYSQL_PASSWORD:?use tests/env.py}
+    ports: ["127.0.0.1::3306"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ${TEST_INIT_SQL:?use tests/env.py}:/docker-entrypoint-initdb.d/01-test.sql:ro
+    labels:
+      io.grpctest.test.marker: ${TEST_MARKER:?use tests/env.py}
+    healthcheck:
+      test: ["CMD-SHELL", 'MYSQL_PWD="$$MYSQL_ROOT_PASSWORD" mysql -h 127.0.0.1 -uroot -Nse "SELECT 1" >/dev/null']
+      interval: 2s
+      timeout: 5s
+      retries: 60
+    networks: [test]
+  redis:
+    image: redis:7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    environment:
+      REDIS_PASSWORD: ${TEST_REDIS_PASSWORD:?use tests/env.py}
+    command: ["sh", "-ec", 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    ports: ["127.0.0.1::6379"]
+    volumes: ["redis-data:/data"]
+    labels:
+      io.grpctest.test.marker: ${TEST_MARKER:?use tests/env.py}
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 2s
+      timeout: 5s
+      retries: 20
+    networks: [test]
+networks:
+  test:
+    labels:
+      io.grpctest.test.marker: ${TEST_MARKER:?use tests/env.py}
+volumes:
+  mysql-data:
+    labels:
+      io.grpctest.test.marker: ${TEST_MARKER:?use tests/env.py}
+  redis-data:
+    labels:
+      io.grpctest.test.marker: ${TEST_MARKER:?use tests/env.py}
