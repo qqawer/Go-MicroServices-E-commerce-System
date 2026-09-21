@@ -9,6 +9,7 @@ type Category struct {
 	SubCategory []*Category `gorm:"foreignKey:ParentCategoryID;references:ID" json:"sub_category"`
 	Level int32 `gorm:"column:level; type:int;not null;default:1" json:"level"`
 	IsTab bool `gorm:"column:is_tab; not null;default:false" json:"is_tab"`
+	URL string `gorm:"column:url" json:"-"` // Existing required column; not exposed by the category API.
 }
 
 type Brands struct{
