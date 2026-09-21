@@ -2,15 +2,18 @@ package handler
 
 import (
 	"context"
+	"errors"
 
 	"fmt"
 	"grpctest/goods_srv/global"
 	"grpctest/goods_srv/model"
 	"grpctest/goods_srv/model/proto"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"gorm.io/gorm"
 )
 
 type GoodsServer struct{
@@ -73,7 +76,7 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 	}
 
 	if req.Brand > 0 {
-		localDB = localDB.Where("brand_id=?", req.Brand)
+		localDB = localDB.Where("brands_id=?", req.Brand)
 	}
 
 	//通过category去查询商品
@@ -175,8 +178,16 @@ func (s *GoodsServer) DeleteGoods(ctx context.Context, req *proto.DeleteGoodsInf
 func (s *GoodsServer) GetGoodsDetail(ctx context.Context, req *proto.GoodInfoRequest) (*proto.GoodsInfoResponse, error){
 	var goods model.Goods
 
-	if result := global.DB.First(&goods, req.Id); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.NotFound, "商品不存在")
+	err := global.DB.WithContext(ctx).Preload("Category").Preload("Brands").First(&goods, req.Id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, status.Error(codes.NotFound, "商品不存在")
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		zap.S().Errorw("查询商品详情失败", "error", err)
+		return nil, status.Error(codes.Internal, "查询商品详情失败")
 	}
 	goodsInfoResponse := ModelToResponse(goods)
 	return &goodsInfoResponse, nil

@@ -13,7 +13,15 @@ Web 的 PUT 复用 `CreateGoodsInfo`，没有传 `isNew/isHot/onSale`，RPC 却�
 - 商品不存在返回 `NotFound`，无效 ID、空状态更新、分类/品牌不存在返回 `InvalidArgument`；数据库查询、写入、事务提交失败返回 `Internal`，不把 SQL 错误直接传给客户端。
 - 每次更新在事务内锁定目标商品，只更新白名单中的列。不会重写商品的其他状态、计数和库存，不会自动保存分类/品牌表，也不会在商品消失后重新插入商品。
 
-实现位于 `handler/goods_update.go`。保留现有表结构，不修改已执行的迁移基线。库存接入、商品创建、分类/品牌列表与详情关联等仍按后续计划处理。
+实现位于 `handler/goods_update.go`。保留现有表结构，不修改已执行的迁移基线。库存接入、商品创建、分类/品牌管理等仍按后续计划处理。
+
+## 商品查询修复（2026-09-21）
+
+`handler/goods.go` 的详情查询原来只执行 `First(&goods, id)`，拿到了商品上的 `category_id`、`brands_id`，但没有查询关联表，返回的分类和品牌对象因此是零值。现在与列表一致，显式 `Preload("Category").Preload("Brands")`，填充分类 ID/名称和品牌 ID/名称/Logo。商品不存在返回 NotFound；商品或关联查询失败返回 Internal，不返回不完整的成功结果。
+
+品牌筛选的数据库列由误写的 `brand_id` 改为实际的 `brands_id`。HTTP 继续使用 `GET /g/v1/goods?b=<品牌 ID>`；没有匹配商品时返回空列表、total=0。详情路径仍为 `GET /g/v1/goods/:id`，Web 现有的分类字段名 `ctegory` 保持原样。本批只需更新 RPC，现有 Web 客户端无需修改协议或重启。
+
+`tests/integration/goods/rpc_test.go` 在真实隔离 MySQL 和 gRPC 上验证列表/详情关联、品牌匹配和无匹配、商品不存在；`handler/goods_read_test.go` 验证商品、品牌、分类查询失败时的错误响应。复用既有 CI，不修改 SQL 基线或线上业务数据。
 
 ## 协议同步与运行顺序
 
