@@ -31,7 +31,9 @@ job.addProperty(new ParametersDefinitionProperty(
     new ChoiceParameterDefinition('GROUP', ['rpc', 'web'] as String[], 'Which repository to deploy'),
     new StringParameterDefinition('REVISION', '', 'Full 40-character Git commit SHA'),
     new BooleanParameterDefinition('PRELOADED', false, 'Use already imported immutable image IDs; verify source/revision/service labels'),
-    new TextParameterDefinition('IMAGES_JSON', '{}', 'Service names mapped to GHCR image digests')
+    new TextParameterDefinition('IMAGES_JSON', '{}', 'Service names mapped to GHCR image digests'),
+    new StringParameterDefinition('GHCR_USER', '', 'Registry username for this release'),
+    new PasswordParameterDefinition('GHCR_TOKEN', '', 'Short-lived workflow token; never a stored PAT')
 ))
 job.save()
 def token = actionsUser.getProperty(ApiTokenProperty.class).tokenStore.generateNewToken('github-actions')

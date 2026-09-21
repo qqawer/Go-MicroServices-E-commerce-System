@@ -2,6 +2,8 @@
 
 本目录用于一台 Ubuntu 24.04 或 26.04 云服务器上的学习环境。基础设施与应用分别由两个 Compose 项目管理，更新应用不会重建数据库。
 
+**2026-09-21 RPC 自动部署配置**：当前采用 AWS 本机部署 runner → Jenkins，并通过流水线临时 token 拉取 GHCR 镜像；Web 继续在 Mac 运行。当前方案、凭据和核对步骤见 [AUTO_CD.md](AUTO_CD.md)。下文保留原 SSH 方案及首次手动部署操作供参考。
+
 **还没有服务器时**：先按 [Terraform 自动创建服务器](terraform/README.md) 操作。该方式会创建 EC2，并在首次开机时自动执行本文第 1、2 节的安装与初始化步骤，无需再手动上传目录或重复生成密码。已有服务器则从本文第 1 节开始。
 
 ```text
@@ -9,7 +11,7 @@
   → 构建生产入口并执行回归；RPC 额外验证独立 MySQL/Redis、迁移与 seed
   → GitHub Actions 编译各服务并构建 linux/amd64 镜像
   → 推送 GHCR，收集每个镜像的 sha256 digest
-  → SSH 隧道访问服务器本机的 Jenkins
+  → AWS 部署 runner 访问本机 Jenkins（原 SSH 隧道模式仍保留）
   → Jenkins 校验发布清单、基础设施健康和业务表是否存在
   → 拉取整组镜像 → 更新容器 → 等待启动健康检查
   → 成功：记录版本；失败：尝试恢复上一组容器
@@ -24,7 +26,7 @@ PR 执行检查和镜像构建，不推送、不部署。两仓先运行 `ci/che
 - 订单 RPC 已完成基础构建与启动接线修复；当前交易依赖没有启用，`CreateOrder` 返回 `FailedPrecondition`。库存幂等、事务消息、恢复任务与支付竞争仍按原计划 04–06 实施，不能把编译或探针成功当作交易链路完成。
 - MySQL 首次启动只创建四个空库和业务账号。新增显式空库初始化脚本校验商品 SQL 并移除 DROP，再创建当前模型的业务表和示例库存；有数据时拒绝覆盖，见第 2 节。发布脚本仍只检查各库是否存在表，不代替版本化迁移。
 - Nacos 脚本提供七份新的云端 dev 配置，不覆盖已有在线配置。短信与支付宝凭据留空；MQ 配置和消费者在交易阶段接入。库存正确性由后续数据库事务与约束保证，Redis 锁仅为可选的竞争控制，不作为本轮部署前提补入。
-- 2026-09-17 已初始化 AWS 业务库，由 Jenkins #2 首次发布四个 RPC、#3 切换公网端口映射；Mac Web 的登录、商品、购物车已实测，见 [AWS 部署记录](DEPLOYED_AWS.md) 和 [验证记录](VALIDATION.md)。`ENABLE_DEPLOY` 仍关闭，服务器 GHCR 权限与 Actions 跨机自动部署尚未接通。
+- 2026-09-17 已初始化 AWS 业务库，由 Jenkins #2 首次发布四个 RPC、#3 切换公网端口映射；Mac Web 的登录、商品、购物车已实测，见 [AWS 部署记录](DEPLOYED_AWS.md) 和 [验证记录](VALIDATION.md)。当前 RPC 自动部署改为部署 runner 和临时 GHCR 凭据，Web 的自动部署保持关闭，见 [AUTO_CD.md](AUTO_CD.md)。
 
 ## 1. 准备服务器
 
@@ -77,7 +79,7 @@ RPC 容器使用镜像提供的 `grpc_health_probe`，检查 `127.0.0.1:50051`�
 
 注册地址是容器 DNS 名，服务名是发现时查询的标识，两者可以不同。新的云端配置统一使用 `inventory-srv`，不要混用旧导出中的 `inevntory-srv`。应用的 Nacos SDK 已接入 bootstrap 中的用户名和密码。
 
-四个业务库分别为 `grpctest_user_srv`、`grpctest_goods_srv`、`grpctest_inventory_srv`、`grpctest_orders_srv`。部署前需准备表结构与业务数据，并完成订单交易与恢复验证；目前不启用应用自动部署。不要直接执行旧 `model/main` 工具，它们仍有写死的数据库地址和凭据。
+四个业务库分别为 `grpctest_user_srv`、`grpctest_goods_srv`、`grpctest_inventory_srv`、`grpctest_orders_srv`。当前已准备业务表与演示数据，RPC 自动部署保留订单交易保护；完整订单交易与恢复仍需后续验证。不要直接执行旧 `model/main` 工具，它们仍有写死的数据库地址和凭据。
 
 ### 空库导入示例数据
 
@@ -151,7 +153,7 @@ Jenkins 参数 PRELOADED 默认为 false。已有 Jenkins 任务不会自动重�
 
 SSH 的安全组必须允许 Actions runner 到达服务器；只允许 Mac 的 IP 时，托管 runner 会连接失败。可使用具备固定出口/私网连接的 runner，并相应修改 workflow 的 `runs-on`。不要为 Jenkins 开公网 8080，也不要公开数据库端口。
 
-仓库 Actions Variable `ENABLE_DEPLOY` 默认为未设置，此时仅构建/发布镜像。本轮保持关闭；以后服务器、业务配置、数据库与交易验证全部就绪，才在两个仓库的 **Repository variables** 中设为 `true`，才会执行部署 Job（不能只放在 Environment variable 中，因为 Job 的 if 在进入 environment 前判断）。
+仓库 Actions Variable `ENABLE_DEPLOY` 未设置时仅构建/发布镜像。当前 RPC 在 **Repository variables** 中设置为 `true`，Web 保持未设置。该开关不能只放在 Environment variable 中，因为 Job 的 if 在进入 environment 前判断。RPC 已采用部署 runner，所需 Secret 仅为 `aws` environment 的 `JENKINS_API_TOKEN`；上面的 SSH Secrets 表是旧方案，不是当前 RPC 的必填项。
 
 首次发布 GHCR 包时确认仓库 Actions 的 `GITHUB_TOKEN` 有 `packages:write` 权限；已存在的包还需给对应仓库 Actions 授权。workflow 已声明写包所需权限。环境 Secrets/分支保护按账号实际功能配置。
 

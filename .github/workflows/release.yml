@@ -94,9 +94,12 @@ jobs:
   deploy:
     needs: images
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.ENABLE_DEPLOY == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, grpctest-deploy]
     timeout-minutes: 25
     environment: aws
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -104,12 +107,11 @@ jobs:
           pattern: image-*
           path: manifests
           merge-multiple: true
-      - name: Trigger Jenkins through SSH and wait for deployment result
+      - name: Trigger local Jenkins and wait for deployment result
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          JENKINS_URL: http://127.0.0.1:8080
+          GHCR_USER: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ github.token }}
           JENKINS_USER: actions
           JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
         run: python3 ci/trigger_jenkins.py rpc "$GITHUB_SHA" manifests

@@ -1,5 +1,9 @@
 # AWS 部署记录 · 2026-09-17 RPC 首次发布与 Mac 联调
 
+## 2026-09-21 自动部署配置更新
+
+现有 AWS 新增仅用于 RPC 发布的 GitHub runner，Jenkins 沿用原任务和权限，增加临时 GHCR 认证。配置与核对方式见 [AUTO_CD.md](AUTO_CD.md)。四个 RPC 发布版本以 Actions 对应运行、Jenkins 构建结果和 `runtime/state/rpc-<提交>.json` 为准。Web 继续在 Mac 运行；以下为 9 月 17–19 日的历史部署快照。
+
 2026-09-17 已通过 SSH 连接服务器，初始化业务数据，并由 Jenkins `grpctest-deploy #2` 成功发布四个 RPC。当前五个基础组件、四个 RPC 容器均正常；Consul 的四项 gRPC 检查均 passing。随后按用户要求改为 Mac 公网直连：Jenkins #3 应用 RPC 端口映射并成功，Redis 映射重建后健康；关闭开发隧道后真实接口复验通过。完整下单和自动 Actions 部署仍未完成。下面资源容量和旧安全组规则保留各自记录时的快照。
 
 ## 2026-09-19 MySQL 端口映射更新

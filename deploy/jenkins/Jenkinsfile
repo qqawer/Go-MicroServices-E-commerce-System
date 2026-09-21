@@ -13,7 +13,7 @@ pipeline {
 set -euo pipefail
 args=("$GROUP" "$REVISION")
 if [[ "${PRELOADED:-false}" == true ]]; then args+=(--preloaded); fi
-python3 "$DEPLOY_ROOT/scripts/release.py" "${args[@]}"
+python3 "$DEPLOY_ROOT/scripts/release-with-registry.py" "${args[@]}"
 '''
             }
         }

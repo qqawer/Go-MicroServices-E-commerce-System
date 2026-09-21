@@ -6,6 +6,7 @@ export GOWORK=off
 
 # Match the Go version installed by release.yml and used by Dockerfile.
 go version
+python3 -m unittest discover -s ci -p 'test_*.py'
 
 # Build production entry points only; example programs are not release targets.
 # Multiple packages populate Go's build cache without leaving binaries in the repo.
