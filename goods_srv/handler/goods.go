@@ -171,43 +171,6 @@ func (s *GoodsServer) DeleteGoods(ctx context.Context, req *proto.DeleteGoodsInf
 	}
 	return &emptypb.Empty{}, nil
 }
-//UpdateGoods 更新商品信息
-func (s *GoodsServer) UpdateGoods(ctx context.Context, req *proto.CreateGoodsInfo) (*emptypb.Empty, error){
-	var goods model.Goods
-
-	if result := global.DB.First(&goods, req.Id); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.InvalidArgument, "商品不存在")
-	}
-
-	var category model.Category
-	if result := global.DB.First(&category, req.CategoryId); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.InvalidArgument, "商品分类不存在")
-	}
-
-	var brand model.Brands
-	if result := global.DB.First(&brand, req.BrandId); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.InvalidArgument, "品牌不存在")
-	}
-
-	goods.Brands = brand
-	goods.Category = category
-	goods.Name = req.Name
-	goods.GoodsSn = req.GoodsSn
-	goods.MarketPrice= req.MarketPrice
-	goods.ShopPrice= req.ShopPrice
-	goods.GoodsBrief= req.GoodsBrief
-	goods.ShipFree= req.ShipFree
-	goods.Images= req.Images
-	goods.DescImages= req.DescImages
-	goods.GoodsFrontImage= req.GoodsFrontImage
-	goods.IsNew= req.IsNew
-	goods.IsHot= req.IsHot
-	goods.OnSale= req.OnSale
-
-	global.DB.Save(&goods)
-	return &emptypb.Empty{}, nil
-}
-
 //GetGoodsDetail 根据id查询商品
 func (s *GoodsServer) GetGoodsDetail(ctx context.Context, req *proto.GoodInfoRequest) (*proto.GoodsInfoResponse, error){
 	var goods model.Goods

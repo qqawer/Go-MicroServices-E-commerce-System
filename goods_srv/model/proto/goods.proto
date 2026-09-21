@@ -9,7 +9,8 @@ service Goods{
     rpc BatchGetGoods(BatchGoodsIdInfo) returns(GoodsListResponse); //批量获取商品信息
     rpc CreateGoods(CreateGoodsInfo) returns (GoodsInfoResponse);   //添加商品
     rpc DeleteGoods(DeleteGoodsInfo) returns (google.protobuf.Empty); //删除商品
-    rpc UpdateGoods(CreateGoodsInfo) returns (google.protobuf.Empty); //更新商品
+    rpc UpdateGoods(CreateGoodsInfo) returns (google.protobuf.Empty); //只更新商品资料，忽略状态与库存字段
+    rpc UpdateGoodsStatus(UpdateGoodsStatusRequest) returns (google.protobuf.Empty); //只更新明确提交的状态
     rpc GetGoodsDetail(GoodInfoRequest) returns(GoodsInfoResponse);   //根据id获取商品内容
 
     //商品分类
@@ -218,6 +219,14 @@ message CreateGoodsInfo {
     bool onSale = 18;
     int32 categoryId = 19;
     int32 brandId = 20;
+}
+
+// optional 区分未提交与明确设置 false；至少提交一个状态。
+message UpdateGoodsStatusRequest {
+    int32 id = 1;
+    optional bool isNew = 2;
+    optional bool isHot = 3;
+    optional bool onSale = 4;
 }
 
 //商品减量请求
