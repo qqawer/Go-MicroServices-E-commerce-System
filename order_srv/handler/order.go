@@ -3,7 +3,9 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"time"
 
@@ -21,8 +23,8 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // GenerationSn 生成订单编号
@@ -60,67 +62,109 @@ type OrderServer struct {
 
 var _ proto.OrderServer = (*OrderServer)(nil)
 
-// CartItemList 获取购物车列表
+// CartItemList 获取当前用户的购物车，零值用户不能省略查询条件。
 func (O *OrderServer) CartItemList(ctx context.Context, req *proto.UserInfo) (*proto.CartItemListResponse, error) {
-	var shopCars []model.ShoppingCart
-	result := global.DB.Where(&model.ShoppingCart{User: req.Id}).Find(&shopCars)
-	if result.Error != nil {
-		return nil, result.Error
+	if req.GetId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "用户 ID 必须为正数")
 	}
-
-	Rsp := proto.CartItemListResponse{
-		Total: int32(result.RowsAffected),
+	var carts []model.ShoppingCart
+	if err := global.DB.WithContext(ctx).Where("user = ?", req.Id).Find(&carts).Error; err != nil {
+		return nil, cartError(ctx, err)
 	}
-	for _, value := range shopCars {
-		Rsp.Data = append(Rsp.Data, &proto.ShopCartInfoResponse{
-			Id:      value.ID,
-			UserId:  value.User,
-			GoodsId: value.Goods,
-			Nums:    value.Nums,
-			Checked: value.Checked,
-		})
+	rsp := &proto.CartItemListResponse{Total: int32(len(carts))}
+	for _, cart := range carts {
+		rsp.Data = append(rsp.Data, cartResponse(cart))
 	}
-	return &Rsp, nil
+	return rsp, nil
 }
 
-// CreateCarItem 新增商品到购物车，1. 购物车原本没有 2. 购物车已经有该商品
+// CreateCarItem 新增商品到购物车；已有记录累加数量并保留勾选状态。
 func (O *OrderServer) CreateCarItem(ctx context.Context, req *proto.CartItemRequest) (*proto.ShopCartInfoResponse, error) {
-	var shopCart model.ShoppingCart
-	if result := global.DB.Where(&model.ShoppingCart{Goods: req.GoodsId, User: req.UserId}).First(&shopCart); result.RowsAffected == 1 {
-		//如果该商品也存在，这合并数据
-		shopCart.Nums += req.Nums
-	} else {
-		shopCart.Goods = req.GoodsId
-		shopCart.User = req.UserId
-		shopCart.Nums = req.Nums
-		shopCart.Checked = false
+	if req.GetUserId() <= 0 || req.GetGoodsId() <= 0 || req.GetNums() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "用户、商品 ID 和数量必须为正数")
 	}
-	global.DB.Save(&shopCart)
-	return &proto.ShopCartInfoResponse{Id: shopCart.ID}, nil
+	var cart model.ShoppingCart
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("goods = ? AND user = ?", req.GoodsId, req.UserId).First(&cart).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			cart = model.ShoppingCart{User: req.UserId, Goods: req.GoodsId, Nums: req.GetNums()}
+			return tx.Create(&cart).Error
+		}
+		if err != nil {
+			return err
+		}
+		if int64(cart.Nums)+int64(req.GetNums()) > math.MaxInt32 {
+			return status.Error(codes.InvalidArgument, "购物车数量超出范围")
+		}
+		cart.Nums += req.GetNums()
+		return tx.Model(&model.ShoppingCart{}).Where("id = ? AND user = ?", cart.ID, req.UserId).Update("nums", cart.Nums).Error
+	})
+	if err != nil {
+		return nil, cartError(ctx, err)
+	}
+	return cartResponse(cart), nil
 }
 
-// UpdateCartItem 更新购物车：商品更新数量和选中状态
+// UpdateCartItem 按购物车行 ID 和当前用户定位，只更新明确提供的字段。
 func (O *OrderServer) UpdateCartItem(ctx context.Context, req *proto.CartItemRequest) (*empty.Empty, error) {
-	var shopCart model.ShoppingCart
-	if result := global.DB.Where("goods=? and user=?", req.GoodsId, req.UserId).First(&shopCart); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.NotFound, "购物车不存在该记录")
+	if req.GetId() <= 0 || req.GetUserId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "购物车和用户 ID 必须为正数")
 	}
-
-	shopCart.Checked = req.Checked
-	if req.Nums > 0 {
-		shopCart.Nums = req.Nums
+	if req.Nums == nil && req.Checked == nil || req.Nums != nil && req.GetNums() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "必须提供正数数量或勾选状态")
 	}
-	global.DB.Save(&shopCart)
+	changes := map[string]interface{}{}
+	if req.Nums != nil {
+		changes["nums"] = req.GetNums()
+	}
+	if req.Checked != nil {
+		changes["checked"] = req.GetChecked()
+	}
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 先确认归属并锁定行，使值未变化的更新也能成功；不使用 Save 的插入回退。
+		var cart model.ShoppingCart
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user = ?", req.Id, req.UserId).First(&cart).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.ShoppingCart{}).Where("id = ? AND user = ?", req.Id, req.UserId).Updates(changes).Error
+	})
+	if err != nil {
+		return nil, cartError(ctx, err)
+	}
 	return &empty.Empty{}, nil
 }
 
-// DeleteCartItem 删除购物车记录
+// DeleteCartItem 删除当前用户拥有的购物车行。
 func (O *OrderServer) DeleteCartItem(ctx context.Context, req *proto.CartItemRequest) (*empty.Empty, error) {
-	//通过goodsId和userId删除
-	if result := global.DB.Where("goods=? and user=?", req.GoodsId, req.UserId).Delete(&model.ShoppingCart{}); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.NotFound, "购物车记录不存在")
+	if req.GetId() <= 0 || req.GetUserId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "购物车和用户 ID 必须为正数")
 	}
-	return &emptypb.Empty{}, nil
+	result := global.DB.WithContext(ctx).Where("id = ? AND user = ?", req.Id, req.UserId).Delete(&model.ShoppingCart{})
+	if result.Error != nil {
+		return nil, cartError(ctx, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return nil, status.Error(codes.NotFound, "购物车记录不存在")
+	}
+	return &empty.Empty{}, nil
+}
+
+func cartResponse(cart model.ShoppingCart) *proto.ShopCartInfoResponse {
+	return &proto.ShopCartInfoResponse{Id: cart.ID, UserId: cart.User, GoodsId: cart.Goods, Nums: cart.Nums, Checked: cart.Checked}
+}
+
+func cartError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return status.FromContextError(ctx.Err()).Err()
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return status.Error(codes.NotFound, "购物车记录不存在")
+	}
+	if _, ok := status.FromError(err); ok {
+		return err
+	}
+	zap.S().Errorw("购物车数据库操作失败", "error", err)
+	return status.Error(codes.Internal, "购物车数据库操作失败")
 }
 
 // OrderListener 发送消息 可靠消息传送，基于rocketmq的延时机制，对订单支付状态检查以及及时归还库存

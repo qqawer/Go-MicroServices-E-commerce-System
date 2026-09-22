@@ -35,14 +35,14 @@ message CartItemListResponse {
 }
 
 message CartItemRequest {
-    int32 id = 1;
+    int32 id = 1; // Update/Delete: shoppingcart row ID, never goods ID.
     int32 userId = 2;
     int32 goodsId = 3;
     string goodsName = 6;
     string goodsImage = 7;
     float goodsPrice = 8;
-    int32 nums = 4;
-    bool checked = 5;
+    optional int32 nums = 4; // Create requires > 0; Update changes only supplied fields.
+    optional bool checked = 5;
 }
 
 message OrderRequest {
