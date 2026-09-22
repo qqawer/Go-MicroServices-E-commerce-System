@@ -67,6 +67,25 @@ def main():
             missing = sql('SELECT COUNT(*) FROM grpctest_goods_srv.goods g LEFT JOIN grpctest_inventory_srv.inventory i ON i.goods=g.id AND i.deleted_at IS NULL WHERE g.deleted_at IS NULL AND i.id IS NULL')
             if bad != '0' or missing != '0':
                 raise ValueError('Duplicate/invalid inventory or existing goods without inventory; reconcile explicitly first')
+        if applied < 3 and len(migrations) >= 3:
+            # Refuse ambiguous legacy history before creating any new schema objects.
+            bad_orders = sql("SELECT COUNT(*)-COUNT(DISTINCT order_sn)+COALESCE(SUM(order_sn IS NULL OR order_sn NOT REGEXP '^[A-Za-z0-9_-]{1,200}$'),0) FROM grpctest_orders_srv.orderinfo")
+            bad_stock = sql("SELECT COUNT(*)-COUNT(DISTINCT order_sn)+COALESCE(SUM(order_sn IS NULL OR order_sn NOT REGEXP '^[A-Za-z0-9_-]{1,200}$' OR status IS NULL OR status NOT IN ('1','2') OR detail IS NULL OR NOT JSON_VALID(detail)),0) FROM grpctest_inventory_srv.stockselldetail")
+            if bad_orders != '0' or bad_stock != '0':
+                raise ValueError('Invalid/duplicate legacy order or stock operation history; reconcile explicitly first')
+            for row in sql('SELECT order_sn,detail FROM grpctest_inventory_srv.stockselldetail').splitlines():
+                number, raw = row.split('\t', 1)
+                detail = json.loads(raw)
+                if not isinstance(detail, list) or not 1 <= len(detail) <= 1000:
+                    raise ValueError('Invalid legacy stock operation snapshot')
+                totals = {}
+                for item in detail:
+                    if not isinstance(item, dict) or type(item.get('Goods')) is not int or type(item.get('Num')) is not int:
+                        raise ValueError('Invalid legacy stock operation snapshot')
+                    goods, quantity = item['Goods'], item['Num']
+                    totals[goods] = totals.get(goods, 0) + quantity
+                    if not 1 <= goods <= 2147483647 or quantity <= 0 or totals[goods] > 2147483647:
+                        raise ValueError('Invalid legacy stock operation quantity')
         print(f'Preflight passed: {applied}/{len(migrations)} migrations recorded')
         if args.action == 'check' or applied == len(migrations):
             return

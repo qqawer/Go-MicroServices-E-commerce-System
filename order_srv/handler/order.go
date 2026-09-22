@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"math"
-	"math/rand"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
@@ -28,13 +28,7 @@ import (
 )
 
 // GenerationSn 生成订单编号
-func GenerationSn(userId int32) string {
-	rand.Seed(time.Now().UnixNano())
-	now := time.Now()
-	//年月日时分秒 + 用户id + 两位随机数
-	orderSn := fmt.Sprintf("%d%d%d%d%d%d%d%d", now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), userId, rand.Intn(90)+10)
-	return orderSn
-}
+func GenerationSn(_ int32) string { return uuid.NewString() }
 
 // Paginate 将数据进行分页
 func Paginate(page, pageSize int) func(db *gorm.DB) *gorm.DB {
@@ -177,187 +171,160 @@ type OrderListener struct {
 }
 
 // ExecuteLocalTransaction  When send transactional prepare(half) message succeed, this method will be invoked to execute local transaction.
-func (o *OrderListener) ExecuteLocalTransaction(msgs *primitive.Message) primitive.LocalTransactionState {
-	//执行本地事务
-	//1. 从购物车获取商品信息
-	//2. 去查询商品服务(跨服务)
-	//3. 调用库存服务扣减库存(跨服务)
-	//4.订单的基本信息表 和订单的商品信息表
-	//5.从购物车中删除已购买记录
-
-	//接收上下文数据链路追踪
+func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitive.LocalTransactionState {
 	ctx := o.Ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	parentSpan, _ := opentracing.StartSpanFromContext(ctx, "order_transaction")
-	defer parentSpan.Finish()
-
-	fmt.Println("开始执行本地事务")
-	var OrderInfo model.OrderInfo
-	_ = json.Unmarshal(msgs.Body, &OrderInfo)
-
-	//1. 从购物车获取商品信息
-	var goodsIds []int32
-	var shopCartList []model.ShoppingCart
-	goodsNumsMap := make(map[int32]int32)
-
-	//开始追踪
-	shoppingTracer := opentracing.GlobalTracer().StartSpan("select_shopping_cart", opentracing.ChildOf(parentSpan.Context()))
-
-	if result := global.DB.Where(&model.ShoppingCart{User: OrderInfo.User, Checked: true}).Find(&shopCartList); result.RowsAffected == 0 {
-		//将数据返回至实现者结构体
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	span, ctx := opentracing.StartSpanFromContext(ctx, "order_transaction")
+	defer span.Finish()
+	o.Code = codes.Internal
+	var order model.OrderInfo
+	if msg == nil || json.Unmarshal(msg.Body, &order) != nil || !validOrderSN.MatchString(order.OrderSn) || order.User <= 0 {
 		o.Code = codes.InvalidArgument
-		o.Detail = "没有选择结算的商品"
+		o.Detail = "订单消息无效"
+		return primitive.UnknowState
+	}
+	state, err := orderDecision(ctx, order.OrderSn, false)
+	if err != nil {
+		o.Detail = "订单事务记录失败"
+		return primitive.UnknowState
+	}
+	if state == model.OrderCancelled {
+		o.Code = codes.Aborted
+		o.Detail = "订单已取消"
+		return primitive.CommitMessageState
+	}
+	if state == model.OrderCommitted {
+		if err := global.DB.WithContext(ctx).Where("order_sn = ?", order.OrderSn).First(&order).Error; err != nil {
+			return primitive.UnknowState
+		}
+		o.Code = codes.OK
+		o.ID = order.ID
+		o.OrderAmount = order.OrderMount
 		return primitive.RollbackMessageState
 	}
-
-	//结束当前追踪
-	shoppingTracer.Finish()
-
-	for _, shopCart := range shopCartList {
-		goodsIds = append(goodsIds, shopCart.Goods)
-		goodsNumsMap[shopCart.Goods] = shopCart.Nums
+	fail := func(code codes.Code, detail string) primitive.LocalTransactionState {
+		o.Code = code
+		o.Detail = detail
+		// The caller may have timed out while Sell committed. Persist cancellation using
+		// a separate bounded context, so the compensation also fences a late Sell.
+		decisionCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
+		defer done()
+		return cancelOrderMessage(decisionCtx, order.OrderSn)
 	}
-
-	//开始追踪
-	queryGoodsSpan := opentracing.GlobalTracer().StartSpan("query_goods", opentracing.ChildOf(parentSpan.Context()))
-
-	//2. 去查询商品服务(跨服务),批量查询
-	Goods, err := global.GoodsSrvClient.BatchGetGoods(context.Background(), &proto.BatchGoodsIdInfo{
-		Id: goodsIds,
+	var cart []model.ShoppingCart
+	if err := global.DB.WithContext(ctx).Where("user = ? AND checked = ?", order.User, true).Find(&cart).Error; err != nil {
+		return fail(codes.Internal, "购物车查询失败")
+	}
+	if len(cart) == 0 {
+		return fail(codes.InvalidArgument, "没有选择结算的商品")
+	}
+	ids := make([]int32, 0, len(cart))
+	nums := map[int32]int32{}
+	for _, item := range cart {
+		if item.Goods <= 0 || item.Nums <= 0 || int64(nums[item.Goods])+int64(item.Nums) > math.MaxInt32 {
+			return fail(codes.InvalidArgument, "购物车数量无效")
+		}
+		if _, ok := nums[item.Goods]; !ok {
+			ids = append(ids, item.Goods)
+		}
+		nums[item.Goods] += item.Nums
+	}
+	goods, err := global.GoodsSrvClient.BatchGetGoods(ctx, &proto.BatchGoodsIdInfo{Id: ids})
+	if err != nil {
+		return fail(status.Code(err), "查询商品失败")
+	}
+	if goods == nil || len(goods.Data) != len(ids) {
+		return fail(codes.FailedPrecondition, "购物车中存在无效商品")
+	}
+	var orderGoods []model.OrderGoods
+	var stock []*proto.GoodsInventoryInfo
+	seen := map[int32]bool{}
+	for _, item := range goods.Data {
+		if item == nil || nums[item.Id] <= 0 || seen[item.Id] {
+			return fail(codes.Internal, "商品清单不一致")
+		}
+		seen[item.Id] = true
+		order.OrderMount += item.ShopPrice * float32(nums[item.Id])
+		orderGoods = append(orderGoods, model.OrderGoods{Goods: item.Id, GoodsName: item.Name, GoodsPrice: item.ShopPrice, GoodsImage: item.GoodsFrontImage, Nums: nums[item.Id]})
+		stock = append(stock, &proto.GoodsInventoryInfo{GoodsId: item.Id, Num: nums[item.Id]})
+	}
+	if _, err := global.InventorySrvClient.Sell(ctx, &proto.SellInfo{OrderSn: order.OrderSn, GoodsInfo: stock}); err != nil {
+		// Even InvalidArgument/Unavailable is a decision to abort this order; never
+		// infer that nothing committed from an RPC error and discard compensation.
+		return fail(status.Code(err), "扣减库存未确认，订单取消并安排返库")
+	}
+	order.Status = "WAIT_BUYER_PAY"
+	err = global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var decision model.OrderTransaction
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("order_sn = ?", order.OrderSn).First(&decision).Error; err != nil {
+			return err
+		}
+		if decision.State == model.OrderCancelled {
+			return status.Error(codes.Aborted, "订单已被回查取消")
+		}
+		if decision.State == model.OrderCommitted {
+			return tx.Where("order_sn = ?", order.OrderSn).First(&order).Error
+		}
+		if err := tx.Create(&order).Error; err != nil {
+			return err
+		}
+		for n := range orderGoods {
+			orderGoods[n].Order = order.ID
+		}
+		if err := tx.CreateInBatches(&orderGoods, 100).Error; err != nil {
+			return err
+		}
+		// Preserve carts edited while RPCs were in flight instead of deleting new choices.
+		for _, item := range cart {
+			if err := tx.Where("id = ? AND user = ? AND nums = ? AND checked = ?", item.ID, order.User, item.Nums, true).Delete(&model.ShoppingCart{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := addOrderEvent(tx, order.OrderSn, "order_timeout", 4); err != nil {
+			return err
+		}
+		return tx.Model(&model.OrderTransaction{}).Where("order_sn = ?", order.OrderSn).Update("state", model.OrderCommitted).Error
 	})
 	if err != nil {
-		o.Code = codes.Internal
-		o.Detail = "批量查询商品失败"
-
-		return primitive.RollbackMessageState
+		decisionCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
+		defer done()
+		// Commit acknowledgment may be lost. The durable decision determines whether to compensate.
+		state, e := orderDecision(decisionCtx, order.OrderSn, true)
+		if e != nil {
+			o.Detail = "订单提交结果待确认"
+			return primitive.UnknowState
+		}
+		if state != model.OrderCommitted {
+			o.Detail = "订单创建失败，已安排返库"
+			return primitive.CommitMessageState
+		}
+		if e := global.DB.WithContext(decisionCtx).Where("order_sn = ?", order.OrderSn).First(&order).Error; e != nil {
+			return primitive.UnknowState
+		}
 	}
-
-	queryGoodsSpan.Finish()
-
-	//总价
-	var orderAmount float32
-	var orderGoods []*model.OrderGoods
-	var GoodsInfo []*proto.GoodsInventoryInfo
-	for _, goods := range Goods.Data {
-		orderAmount += goods.ShopPrice * float32(goodsNumsMap[goods.Id])
-		orderGoods = append(orderGoods, &model.OrderGoods{
-			Goods:      goods.Id,
-			GoodsName:  goods.Name,
-			GoodsPrice: goods.ShopPrice,
-			GoodsImage: goods.GoodsFrontImage,
-			Nums:       goodsNumsMap[goods.Id],
-		})
-		GoodsInfo = append(GoodsInfo, &proto.GoodsInventoryInfo{
-			GoodsId: goods.Id,
-			Num:     goodsNumsMap[goods.Id],
-		})
-	}
-
-	//开始追踪
-	queryInvSpan := opentracing.GlobalTracer().StartSpan("query_inventory", opentracing.ChildOf(parentSpan.Context()))
-
-	//3. 调用库存服务扣减库存(跨服务)
-	_, err = global.InventorySrvClient.Sell(context.Background(), &proto.SellInfo{
-		GoodsInfo: GoodsInfo,
-		OrderSn:   OrderInfo.OrderSn,
-	})
-	if err != nil {
-		o.Code = codes.ResourceExhausted
-		o.Detail = "扣减库存失败"
-		zap.S().Errorf("库存扣减失败：%s", err)
-		return primitive.RollbackMessageState
-	}
-
-	queryInvSpan.Finish()
-
-	//需要事务逻辑
-	tx := global.DB.Begin()
-
-	OrderInfo.OrderMount = orderAmount
-
-	//开始追踪
-	querySaveSpan := opentracing.GlobalTracer().StartSpan("query_Save", opentracing.ChildOf(parentSpan.Context()))
-	if result := tx.Save(&OrderInfo); result.RowsAffected == 0 {
-		//业务回滚
-		tx.Rollback()
-
-		o.Code = codes.Internal
-		o.Detail = "创建订单失败"
-		return primitive.CommitMessageState
-
-	}
-
-	querySaveSpan.Finish()
-
-	o.OrderAmount = orderAmount
-	o.ID = OrderInfo.ID
-
-	//将订单id放入商品信息
-	for _, orderGood := range orderGoods {
-		orderGood.Order = OrderInfo.ID
-	}
-
-	queryBatchSpan := opentracing.GlobalTracer().StartSpan("query_batch", opentracing.ChildOf(parentSpan.Context()))
-
-	//批量插入
-	if result := tx.CreateInBatches(orderGoods, 100); result.RowsAffected == 0 {
-		//业务回滚
-		tx.Rollback()
-		o.Code = codes.Internal
-		o.Detail = "创建订单商品信息失败"
-		return primitive.CommitMessageState
-	}
-
-	queryBatchSpan.Finish()
-
-	queryDeleteSpan := opentracing.GlobalTracer().StartSpan("query_delete", opentracing.ChildOf(parentSpan.Context()))
-
-	//清空购物车
-	if result := tx.Where(&model.ShoppingCart{User: OrderInfo.User, Checked: true}).Delete(&model.ShoppingCart{}); result.RowsAffected == 0 {
-		tx.Rollback()
-		o.Code = codes.Internal
-		o.Detail = "清空购物车失败"
-		return primitive.CommitMessageState
-	}
-
-	queryDeleteSpan.Finish()
-
-	//发送延时消息
-	//超时回查
-	//初始化生产者
-	msg := primitive.NewMessage("order_timeout", msgs.Body)
-	msg.WithDelayTimeLevel(4)
-	_, err = global.MQOrder.SendSync(context.Background(), msg)
-	if err != nil {
-		zap.S().Errorf("发送延时消息失败: %v\n", err)
-		tx.Rollback()
-		o.Code = codes.Internal
-		o.Detail = "发送延时消息失败"
-		return primitive.CommitMessageState
-	}
-
-	//提交本地事务
-	tx.Commit()
+	o.ID = order.ID
+	o.OrderAmount = order.OrderMount
 	o.Code = codes.OK
-
-	fmt.Println("业务执行成功，不需要向mq提交消息")
+	if err := publishOrderEvent(ctx, order.OrderSn, "order_timeout"); err != nil {
+		zap.S().Errorw("订单已创建，延时消息待重发", "order_sn", order.OrderSn, "error", err)
+	}
 	return primitive.RollbackMessageState
 }
 
-// CheckLocalTransaction When no response to prepare(half) message. broker will send check message to check the transaction status, and this method will be invoked to get local transaction status.
 func (o *OrderListener) CheckLocalTransaction(msg *primitive.MessageExt) primitive.LocalTransactionState {
-	//消息回查
-	var OrderInfo model.OrderInfo
-	_ = json.Unmarshal(msg.Body, &OrderInfo)
-
-	//查订单号
-	if result := global.DB.Where(model.OrderInfo{OrderSn: OrderInfo.OrderSn}).First(&OrderInfo); result.RowsAffected == 0 {
-		return primitive.CommitMessageState //这里并不能说明库存被扣减了
+	var order struct{ OrderSn string }
+	if msg == nil || json.Unmarshal(msg.Body, &order) != nil || !validOrderSN.MatchString(order.OrderSn) {
+		return primitive.UnknowState
 	}
-
-	return primitive.RollbackMessageState
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// Checking a preparing/missing operation durably cancels it. The execution path
+	// locks the same decision before writing an order, so a late commit cannot resurrect it.
+	return cancelOrderMessage(ctx, order.OrderSn)
 }
 
 // CreateOrder 新建订单
@@ -397,6 +364,11 @@ func (O *OrderServer) CreateOrder(ctx context.Context, req *proto.OrderRequest) 
 		return nil, err
 	}
 
+	defer func() {
+		if err := q.Shutdown(); err != nil {
+			zap.S().Errorw("关闭事务消息生产者失败", "error", err)
+		}
+	}()
 	//生成订单的基本信息表
 	order := model.OrderInfo{
 		User:         req.UserId,
@@ -414,15 +386,10 @@ func (O *OrderServer) CreateOrder(ctx context.Context, req *proto.OrderRequest) 
 
 	//发送消息
 	msg := primitive.NewMessage("order-reback", jsonString)
-	_, err = q.SendMessageInTransaction(context.Background(), msg)
+	_, err = q.SendMessageInTransaction(ctx, msg)
 	if err != nil {
 		fmt.Printf("发送失败%s", err)
 		return nil, status.Errorf(codes.Internal, "发送消息失败")
-	}
-
-	err = q.Shutdown()
-	if err != nil {
-		panic("shutdown fail err")
 	}
 
 	if orderListener.Code != codes.OK {
@@ -504,50 +471,70 @@ func (O *OrderServer) OrderDetail(ctx context.Context, req *proto.OrderRequest) 
 
 // UpdateOrderStatus 更新订单状态
 func (O *OrderServer) UpdateOrderStatus(ctx context.Context, req *proto.OrderStatus) (*empty.Empty, error) {
-	//先查询后更新，效率较低，直接更新查询
-	if result := global.DB.Model(&model.OrderInfo{}).Where("order_sn = ?", req.OrderSn).Update("status", req.Status); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.NotFound, "订单不存在")
+	if !validOrderSN.MatchString(req.GetOrderSn()) {
+		return nil, status.Error(codes.InvalidArgument, "订单号无效")
+	}
+	if req.Status == "TRADE_CLOSED" {
+		_, err := closeOrder(ctx, req.OrderSn)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "订单关闭结果待确认")
+		}
+		// The persisted refund intent is handled by the dispatcher; do not couple it
+		// to the HTTP/payment caller's lifetime.
+		return &empty.Empty{}, nil
+	}
+	if req.Status != "TRADE_SUCCESS" && req.Status != "TRADE_FINISHED" && req.Status != "WAIT_BUYER_PAY" {
+		return nil, status.Error(codes.InvalidArgument, "订单状态无效")
+	}
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var order model.OrderInfo
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("order_sn = ?", req.OrderSn).First(&order).Error; err != nil {
+			return err
+		}
+		if order.Status == req.Status {
+			return nil
+		}
+		switch order.Status {
+		case "", "PAYING", "WAIT_BUYER_PAY":
+			if req.Status != "TRADE_SUCCESS" && req.Status != "WAIT_BUYER_PAY" {
+				return status.Error(codes.FailedPrecondition, "订单状态转换无效")
+			}
+		case "TRADE_SUCCESS":
+			if req.Status != "TRADE_FINISHED" {
+				return status.Error(codes.FailedPrecondition, "已支付订单不能回退")
+			}
+		default:
+			return status.Error(codes.FailedPrecondition, "订单已结束，需要核对支付结果")
+		}
+		return tx.Model(&model.OrderInfo{}).Where("id = ?", order.ID).Update("status", req.Status).Error
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Error(codes.NotFound, "订单不存在")
+		}
+		if _, ok := status.FromError(err); ok {
+			return nil, err
+		}
+		return nil, status.Error(codes.Internal, "订单状态更新失败")
 	}
 	return &empty.Empty{}, nil
 }
 
 func TimeOutReback(ctx context.Context, msgs ...*primitive.MessageExt) (consumer.ConsumeResult, error) {
-	for i := range msgs {
-		var OrderInfo model.OrderInfo
-		_ = json.Unmarshal(msgs[i].Body, &OrderInfo)
-
-		//如果支付成功，什么都不做，超时支付则归还库存
-		var order model.OrderInfo
-		if result := global.DB.Model(&model.OrderInfo{}).Where(&model.OrderInfo{OrderSn: OrderInfo.OrderSn}).First(&order); result.RowsAffected == 0 {
-			return consumer.ConsumeSuccess, nil
+	for _, msg := range msgs {
+		var order struct{ OrderSn string }
+		if msg == nil || json.Unmarshal(msg.Body, &order) != nil || !validOrderSN.MatchString(order.OrderSn) {
+			return consumer.ConsumeRetryLater, nil
 		}
-
-		fmt.Println("订单状态", order.Status)
-
-		if order.Status != "TRADE_SUCCESS" {
-			//归还库存，模仿order发送消息到order-reback中
-
-			//事务
-			tx := global.DB.Begin()
-
-			//更改订单状态支付成功
-			order.Status = "TRADE_CLOSED"
-			tx.Save(&order)
-
-			mq := primitive.NewMessage("order-reback", msgs[i].Body)
-
-			_, err := global.MQInventory.SendSync(context.Background(), mq)
-			if err != nil {
-				tx.Rollback()
-				zap.S().Errorf("发送失败%s", err)
-				return consumer.ConsumeRetryLater, nil
-			}
-
-			tx.Commit()
-			return consumer.ConsumeSuccess, nil
-
+		requestCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		refund, err := closeOrder(requestCtx, order.OrderSn)
+		if err == nil && refund {
+			err = publishOrderEvent(requestCtx, order.OrderSn, "order-reback")
 		}
-
+		cancel()
+		if err != nil {
+			return consumer.ConsumeRetryLater, nil
+		}
 	}
 	return consumer.ConsumeSuccess, nil
 }

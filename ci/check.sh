@@ -16,4 +16,4 @@ CGO_ENABLED=0 go build -mod=readonly -trimpath \
 # These regressions use local HTTP/gRPC fixtures and sqlmock. Do not replace this
 # allowlist with ./...: old example packages may initialize external services.
 CGO_ENABLED=1 go test -mod=readonly -race -count=1 -timeout=90s \
-  ./order_srv ./order_srv/initialize ./order_srv/handler ./goods_srv/handler
+  ./order_srv ./order_srv/initialize ./order_srv/handler ./goods_srv/handler ./inventory_srv/handler

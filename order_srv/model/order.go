@@ -10,17 +10,17 @@ type ShoppingCart struct {
 	Checked bool  //是否选中
 }
 
-//TableName 表名
+// TableName 表名
 func (ShoppingCart) TableName() string {
 	return "shoppingcart"
 }
 
-//OrderInfo 订单信息
+// OrderInfo 订单信息
 type OrderInfo struct {
 	BaseModel
 
 	User    int32  `gorm:"type:int;index"`
-	OrderSn string `gorm:"type:varchar(30);index"` //订单号，平台自己生成的订单号
+	OrderSn string `gorm:"type:varchar(200);uniqueIndex:uq_orderinfo_order_sn"` //订单号，平台自己生成的订单号
 	PayType string `gorm:"type:varchar(20) comment 'alipay(支付宝)， wechat(微信)'"`
 
 	//status大家可以考虑使用iota来做
@@ -39,7 +39,7 @@ func (OrderInfo) TableName() string {
 	return "orderinfo"
 }
 
-//OrderGoods 订单商品信息
+// OrderGoods 订单商品信息
 type OrderGoods struct {
 	BaseModel
 

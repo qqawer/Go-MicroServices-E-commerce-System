@@ -8,16 +8,15 @@ import (
 	// "time"
 
 	// "gorm.io/driver/mysql"
-	"github.com/go-redsync/redsync/v4"
 	"gorm.io/gorm"
 	// "gorm.io/gorm/logger"
 	// "gorm.io/gorm/schema"
 )
+
 var (
-	DB *gorm.DB
+	DB           *gorm.DB
 	ServerConfig *config.ServerConfig
-	NacosConfig config.NacosConfig
-	Rs           *redsync.Redsync
+	NacosConfig  config.NacosConfig
 )
 
 // func init() {
@@ -46,12 +45,11 @@ var (
 // 	}
 // 	// DB.AutoMigrate(&model.User{})
 // }
-	
+
 // 	//设置全局的logger,这个logger在我们执行每个sql语句的时候会打印每一行sql
 // 	//sql才是最重要的，本着这个的原则我尽量的给大家看到每个api背后的sql语句是什么
 
 // 	//定义一个表结构，将表结构直接生成对应的表 - migrations
 // 	//迁移schema
-	
+
 //   // Migrate the schema
-  

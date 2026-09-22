@@ -81,3 +81,6 @@ AWS 现有库与旧 bootstrap 保持原样，没有执行线上 DDL，也没有�
 两仓的 `.github/workflows/release.yml` 执行顺序为 `checks → images → deploy`。`checks` 使用只读模块依赖，Go 回归开启 race；RPC 还运行上述临时 MySQL/Redis 集成脚本。测试错误会阻止镜像发布。部署仍受现有 `ENABLE_DEPLOY` 控制，本次没有打开自动部署。
 
 普通检查只覆盖正式服务入口和明确列出的回归包，不执行带硬编码连接地址的旧示例程序。完整集成测试必须通过 `run.py` 提供私有连接文件，手动运行带 `integration` 标签的 Go 测试而缺少配置时会明确失败，不会悄悄连接默认数据库。
+
+
+2026-09-22 库存与消息修复新增 `tests/integration/inventory/transactions_test.go` 和 `tests/integration/order/transaction_test.go`，验证扣减/返库幂等、真实数据库提交前后故障、MQ 消费确认与订单持久决定/待发送事件。生产迁移现为 0001–0003、15 张业务表；完整 runner 同时验证存量流水保留与订单决定回填。真实 RocketMQ Broker 和运行时恢复调度尚未接通，消息层使用替身。说明见 [库存事务](../inventory_srv/TRANSACTIONS.md)。

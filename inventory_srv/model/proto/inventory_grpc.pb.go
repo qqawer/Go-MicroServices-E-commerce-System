@@ -20,11 +20,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Inventory_InitInv_FullMethodName   = "/Inventory/InitInv"
-	Inventory_SetInv_FullMethodName    = "/Inventory/SetInv"
-	Inventory_InvDetail_FullMethodName = "/Inventory/InvDetail"
-	Inventory_Sell_FullMethodName      = "/Inventory/Sell"
-	Inventory_Reback_FullMethodName    = "/Inventory/Reback"
+	Inventory_InitInv_FullMethodName           = "/Inventory/InitInv"
+	Inventory_SetInv_FullMethodName            = "/Inventory/SetInv"
+	Inventory_InvDetail_FullMethodName         = "/Inventory/InvDetail"
+	Inventory_GetStockOperation_FullMethodName = "/Inventory/GetStockOperation"
+	Inventory_Sell_FullMethodName              = "/Inventory/Sell"
+	Inventory_Reback_FullMethodName            = "/Inventory/Reback"
 )
 
 // InventoryClient is the client API for Inventory service.
@@ -34,6 +35,7 @@ type InventoryClient interface {
 	InitInv(ctx context.Context, in *GoodsInventoryInfo, opts ...grpc.CallOption) (*GoodsInventoryInfo, error)
 	SetInv(ctx context.Context, in *GoodsInventoryInfo, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	InvDetail(ctx context.Context, in *GoodsInventoryInfo, opts ...grpc.CallOption) (*GoodsInventoryInfo, error)
+	GetStockOperation(ctx context.Context, in *StockOperationRequest, opts ...grpc.CallOption) (*StockOperationResponse, error)
 	Sell(ctx context.Context, in *SellInfo, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Reback(ctx context.Context, in *SellInfo, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
@@ -76,6 +78,16 @@ func (c *inventoryClient) InvDetail(ctx context.Context, in *GoodsInventoryInfo,
 	return out, nil
 }
 
+func (c *inventoryClient) GetStockOperation(ctx context.Context, in *StockOperationRequest, opts ...grpc.CallOption) (*StockOperationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StockOperationResponse)
+	err := c.cc.Invoke(ctx, Inventory_GetStockOperation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *inventoryClient) Sell(ctx context.Context, in *SellInfo, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
@@ -103,6 +115,7 @@ type InventoryServer interface {
 	InitInv(context.Context, *GoodsInventoryInfo) (*GoodsInventoryInfo, error)
 	SetInv(context.Context, *GoodsInventoryInfo) (*emptypb.Empty, error)
 	InvDetail(context.Context, *GoodsInventoryInfo) (*GoodsInventoryInfo, error)
+	GetStockOperation(context.Context, *StockOperationRequest) (*StockOperationResponse, error)
 	Sell(context.Context, *SellInfo) (*emptypb.Empty, error)
 	Reback(context.Context, *SellInfo) (*emptypb.Empty, error)
 	mustEmbedUnimplementedInventoryServer()
@@ -123,6 +136,9 @@ func (UnimplementedInventoryServer) SetInv(context.Context, *GoodsInventoryInfo)
 }
 func (UnimplementedInventoryServer) InvDetail(context.Context, *GoodsInventoryInfo) (*GoodsInventoryInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method InvDetail not implemented")
+}
+func (UnimplementedInventoryServer) GetStockOperation(context.Context, *StockOperationRequest) (*StockOperationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetStockOperation not implemented")
 }
 func (UnimplementedInventoryServer) Sell(context.Context, *SellInfo) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Sell not implemented")
@@ -205,6 +221,24 @@ func _Inventory_InvDetail_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Inventory_GetStockOperation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StockOperationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InventoryServer).GetStockOperation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Inventory_GetStockOperation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InventoryServer).GetStockOperation(ctx, req.(*StockOperationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Inventory_Sell_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SellInfo)
 	if err := dec(in); err != nil {
@@ -259,6 +293,10 @@ var Inventory_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InvDetail",
 			Handler:    _Inventory_InvDetail_Handler,
+		},
+		{
+			MethodName: "GetStockOperation",
+			Handler:    _Inventory_GetStockOperation_Handler,
 		},
 		{
 			MethodName: "Sell",
