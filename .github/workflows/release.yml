@@ -17,7 +17,7 @@ concurrency:
 jobs:
   checks:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -28,6 +28,8 @@ jobs:
         run: bash ci/check.sh
       - name: Verify migrations and fixtures in disposable MySQL
         run: python3 tests/integration/run.py
+      - name: Verify real RocketMQ delivery and process recovery
+        run: python3 tests/mq/run.py
 
   images:
     needs: checks

@@ -30,6 +30,7 @@ var (
 	GroupOrder     producer.Option
 	MQOrder        rocketmq.Producer
 	MQInventory    rocketmq.Producer
+	MQTransactions rocketmq.TransactionProducer
 )
 
 // func init() {

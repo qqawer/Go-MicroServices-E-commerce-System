@@ -123,6 +123,5 @@ func validateServerConfig(cfg *config.ServerConfig) error {
 	if cfg.ConsulInfo.Port < 1 || cfg.ConsulInfo.Port > 65535 {
 		return fmt.Errorf("order service configuration consul.port must be between 1 and 65535")
 	}
-	// MQ 配置留待交易阶段启用；基础订单服务不因此依赖 MQ 或 Redis 锁。
-	return nil
+	return cfg.MqInfo.Validate(true)
 }

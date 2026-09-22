@@ -1,21 +1,24 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
+	"time"
+
 	"grpctest/inventory_srv/global"
-	_ "grpctest/inventory_srv/global"
 	"grpctest/inventory_srv/handler"
 	"grpctest/inventory_srv/initialize"
 	"grpctest/inventory_srv/model/proto"
-	"grpctest/inventory_srv/utils"
-	"net"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/hashicorp/consul/api"
-	// "github.com/satori/go.uuid"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -23,84 +26,121 @@ import (
 )
 
 func main() {
-	IP:=flag.String("ip","0.0.0.0","ip地址")
-	Port:=flag.Int("port",50051,"端口号")
-
-	//初始化	
-	initialize.InitLogger()
-	initialize.InitConfig()
-	initialize.InitDB()
-
-
-
+	ip := flag.String("ip", "0.0.0.0", "监听地址")
+	port := flag.Int("port", 50053, "监听端口，0 表示自动分配")
 	flag.Parse()
-	zap.S().Info("ip:",*IP)
-	fmt.Println("port:",*Port)
-	//如果端口为0，随机获取一个端口
-	if *Port==0{
-		port,err:=utils.GetFreePort()
-		if err!=nil{
-			panic(err)
-		}
-		*Port=port
-		zap.S().Info("port:",*Port)
+	initialize.InitLogger()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, *ip, *port); err != nil {
+		zap.L().Error("inventory service stopped", zap.Error(err))
+		os.Exit(1)
 	}
-	
-	server := grpc.NewServer()
-	proto.RegisterInventoryServer(server,&handler.InventoryServer{})
-	// lis,err:=net.Listen("tcp", "0.0.0.0:8088")
-	lis,err:=net.Listen("tcp",fmt.Sprintf("%s:%d",*IP,*Port))
-	if err!=nil{
-		panic("failed to listen:"+err.Error())
-	}
-	//注册健康检查
-	grpc_health_v1.RegisterHealthServer(server,health.NewServer())
-	
-	//服务注册
-	cfg:=api.DefaultConfig()//获取 Consul 客户端的默认配置
-	cfg.Address=fmt.Sprintf("%s:%d",global.ServerConfig.ConsulInfo.Host,global.ServerConfig.ConsulInfo.Port)//这是 Consul 服务器的地址。
-
-
-	client,err:=api.NewClient(cfg)//创建一个 Consul 客户端实例
-	if err!=nil{
-		panic(err)
-	}
-	check:=&api.AgentServiceCheck{
-		//HTTP: "http://127.0.0.1:8021/health",
-		GRPC: fmt.Sprintf("%s:%d",global.ServerConfig.Host,*Port),//Consul 会定期请求这个 URL 来检查服务是否健康
-		Interval: "5s",//每 5s 检查一次。
-    	Timeout: "2s",// 检查响应超时时间为 2s。
-    	DeregisterCriticalServiceAfter: "10s",//如果连续失败达 10s，则从注册列表中移除服务。
-	}
-	//生成注册对象
-	registration:=new(api.AgentServiceRegistration)
-	registration.Name=global.ServerConfig.Name//服务名称（如 "user-web"）。
-	// serviceID:=fmt.Sprintf("%s",uuid.NewV4())
-	//registration.ID=serviceID//global.ServerConfig.Name 服务实例唯一标识（如 "user-web"，如果部署多个副本，每个副本需要不同 ID）。
-	registration.ID=global.ServerConfig.Name//global.ServerConfig.Name 服务实例唯一标识（如 "user-web"，如果部署多个副本，每个副本需要不同 ID）。
-	registration.Port=*Port//服务监听的端口号（如 8021）
-	registration.Tags=global.ServerConfig.Tags//服务标签，用于分类或标记服务（如 ["mxshop", "boddy"]）。
-	registration.Address=global.ServerConfig.Host//服务所在主机的 IP 地址,会被web层拿到做服务发现，consul自己来做检查的
-	registration.Check=check
-
-	//1. 如何启动两个服务
-	//2. 即使我能够通过终端启动两个服务，但是注册到consul中的时候也会被覆盖
-
-	if err := client.Agent().ServiceRegister(registration); err != nil {
-    zap.S().Fatalf("register service to consul failed: %v", err)
 }
-	go func ()  {
-		if err=server.Serve(lis);err!=nil{
-			panic("failed to start grpc:"+err.Error())
+
+var errShutdownTimeout = errors.New("inventory RPC handlers did not finish within the shutdown grace period")
+
+func run(ctx context.Context, ip string, port int) (err error) {
+	if port < 0 || port > 65535 {
+		return fmt.Errorf("port must be between 0 and 65535")
+	}
+	if err := initialize.InitConfig(); err != nil {
+		return err
+	}
+	closeDB, err := initialize.InitDB()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if !errors.Is(err, errShutdownTimeout) {
+			closeDB()
 		}
 	}()
-
-	//接受终止信号
-	quit:=make(chan os.Signal)
-	signal.Notify(quit,syscall.SIGINT,syscall.SIGTERM)
-	<-quit
-	if err=client.Agent().ServiceDeregister(global.ServerConfig.Name);err!=nil{
-		zap.S().Fatalf("deregister service from consul failed: %v", err)
+	closeMQ, err := initialize.InitMQ(ctx)
+	if err != nil {
+		return err
 	}
-	zap.S().Info("service deregistered")
+	defer func() {
+		if !errors.Is(err, errShutdownTimeout) {
+			closeMQ()
+		}
+	}()
+	listener, err := net.Listen("tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
+	if err != nil {
+		return fmt.Errorf("listen for inventory RPC: %w", err)
+	}
+	defer listener.Close()
+	consulConfig := api.DefaultConfig()
+	consulConfig.Address = net.JoinHostPort(global.ServerConfig.ConsulInfo.Host, strconv.Itoa(global.ServerConfig.ConsulInfo.Port))
+	consulConfig.HttpClient = &http.Client{Timeout: 5 * time.Second}
+	client, err := api.NewClient(consulConfig)
+	if err != nil {
+		return fmt.Errorf("create consul client: %w", err)
+	}
+	return serve(ctx, listener, client)
+}
+
+func serve(ctx context.Context, listener net.Listener, client *api.Client) (err error) {
+	server := grpc.NewServer()
+	proto.RegisterInventoryServer(server, &handler.InventoryServer{})
+	grpc_health_v1.RegisterHealthServer(server, health.NewServer())
+	defer func() {
+		if !stopServer(server) {
+			err = errors.Join(err, errShutdownTimeout)
+		}
+	}()
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.Serve(listener) }()
+
+	port := listener.Addr().(*net.TCPAddr).Port
+	c := global.ServerConfig
+	address := net.JoinHostPort(c.Host, strconv.Itoa(port))
+	id := fmt.Sprintf("%s-%s-%d", c.Name, c.Host, port)
+	registration := &api.AgentServiceRegistration{
+		ID: id, Name: c.Name, Address: c.Host, Port: port, Tags: c.Tags,
+		Check: &api.AgentServiceCheck{
+			GRPC: address, Interval: "5s", Timeout: "2s", DeregisterCriticalServiceAfter: "1m",
+		},
+	}
+	if err := client.Agent().ServiceRegister(registration); err != nil {
+		return fmt.Errorf("register inventory service: %w", err)
+	}
+	defer func() {
+		if err := client.Agent().ServiceDeregister(id); err != nil {
+			zap.L().Warn("deregister inventory service", zap.Error(err))
+		}
+	}()
+	zap.L().Info("inventory RPC started", zap.String("service", c.Name), zap.String("address", address))
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-serveErr:
+		if errors.Is(err, grpc.ErrServerStopped) {
+			return nil
+		}
+		return err
+	}
+}
+
+func stopServer(server *grpc.Server) bool {
+	return stopServerWithin(server, 5*time.Second)
+}
+
+// A false result means handlers may still be using shared dependencies. The
+// caller must report a shutdown failure and let main exit the process rather
+// than closing or clearing those dependencies underneath an active handler.
+func stopServerWithin(server *grpc.Server, grace time.Duration) bool {
+	stopped := make(chan struct{})
+	go func() { server.GracefulStop(); close(stopped) }()
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	select {
+	case <-stopped:
+		return true
+	case <-timer.C:
+		// Stop can itself wait for an internal mutex held by GracefulStop while
+		// a non-cooperative handler is running, so neither call is joined here.
+		go server.Stop()
+		return false
+	}
 }

@@ -80,11 +80,12 @@ func TestOrderTransactionWithoutParentSpan(t *testing.T) {
 	mock.ExpectExec("INSERT INTO `order_transaction`").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT .* FROM `order_transaction`").WillReturnRows(sqlmock.NewRows([]string{"order_sn", "state"}).AddRow("empty-cart", 0))
 	mock.ExpectCommit()
-	mock.ExpectQuery("SELECT .* FROM `shoppingcart`").WillReturnRows(sqlmock.NewRows([]string{"id", "user", "goods", "nums", "checked"}))
+	mock.ExpectQuery("SELECT .* FROM `order_transaction`").WillReturnRows(sqlmock.NewRows([]string{"order_sn", "state"}).AddRow("empty-cart", 0))
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO `order_transaction`").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery("SELECT .* FROM `order_transaction`").WillReturnRows(sqlmock.NewRows([]string{"order_sn", "state"}).AddRow("empty-cart", 0))
 	mock.ExpectExec("UPDATE `order_transaction`").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO `order_event`").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 	body, err := json.Marshal(model.OrderInfo{User: 1, OrderSn: "empty-cart"})
 	if err != nil {
@@ -92,7 +93,7 @@ func TestOrderTransactionWithoutParentSpan(t *testing.T) {
 	}
 	listener := OrderListener{Ctx: context.Background()}
 	state := listener.ExecuteLocalTransaction(primitive.NewMessage("order-reback", body))
-	if state != primitive.CommitMessageState || listener.Code != codes.InvalidArgument {
+	if state != primitive.CommitMessageState || listener.Code != codes.FailedPrecondition {
 		t.Fatalf("empty cart without a parent span: state=%v code=%v", state, listener.Code)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {

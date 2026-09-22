@@ -65,6 +65,15 @@ func run(ctx context.Context, ip string, port int) (err error) {
 			closeClients()
 		}
 	}()
+	closeMQ, err := initialize.InitMQ(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if !errors.Is(err, errShutdownTimeout) {
+			closeMQ()
+		}
+	}()
 	listener, err := net.Listen("tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
 	if err != nil {
 		return fmt.Errorf("listen for order RPC: %w", err)

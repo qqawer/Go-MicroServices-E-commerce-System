@@ -103,7 +103,7 @@ require (
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/apache/rocketmq-client-go/v2 v2.1.2
+	github.com/apache/rocketmq-client-go/v2 v2.1.3-0.20260112025018-99c433634e09
 	github.com/go-sql-driver/mysql v1.7.0
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
@@ -116,3 +116,6 @@ require (
 	golang.org/x/text v0.21.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 )
+
+// Fixed Apache snapshot plus documented cache-lock corrections.
+replace github.com/apache/rocketmq-client-go/v2 => ./third_party/rocketmq-client-go

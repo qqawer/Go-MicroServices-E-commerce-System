@@ -59,7 +59,7 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX)
         release_file = state / 'images.env'
         infra = ['docker', 'compose', '--env-file', str(ROOT / '.env'), '-f', str(ROOT / 'compose.yaml')]
-        for dependency in ('mysql', 'redis', 'nacos', 'consul'):
+        for dependency in ('mysql', 'redis', 'nacos', 'consul', 'mqnamesrv', 'mqbroker'):
             ids = run(infra + ['ps', '-q', dependency], capture=True).stdout.split()
             if len(ids) != 1:
                 raise ValueError(f'Infrastructure service is not running: {dependency}')

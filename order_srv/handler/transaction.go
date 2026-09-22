@@ -42,6 +42,9 @@ func orderDecision(ctx context.Context, number string, cancel bool) (int32, erro
 		if state < model.OrderPreparing || state > model.OrderCancelled {
 			return errors.New("invalid order transaction state")
 		}
+		if cancel && state == model.OrderCancelled {
+			return addOrderEvent(tx, number, "order-reback", 0)
+		}
 		return nil
 	})
 	return state, err
@@ -52,7 +55,7 @@ func cancelOrderMessage(ctx context.Context, number string) primitive.LocalTrans
 	state, err := orderDecision(ctx, number, true)
 	if err != nil {
 		zap.S().Errorw("订单事务决定写入失败，等待回查", "order_sn", number, "error", err)
-		return primitive.UnknowState
+		return primitive.UnkonwnState
 	}
 	if state == model.OrderCommitted {
 		return primitive.RollbackMessageState
@@ -115,12 +118,13 @@ func DispatchOrderEvents(ctx context.Context, limit int) error {
 	if err := global.DB.WithContext(ctx).Where("published = ?", false).Order("id").Limit(limit).Find(&events).Error; err != nil {
 		return err
 	}
+	var failures error
 	for _, event := range events {
 		if err := publishOrderEvent(ctx, event.OrderSn, event.Topic); err != nil {
-			return err
+			failures = errors.Join(failures, err)
 		}
 	}
-	return nil
+	return failures
 }
 
 // Closing state and refund intent commit atomically. A retry resumes the persisted event.
@@ -147,6 +151,18 @@ func closeOrder(ctx context.Context, number string) (bool, error) {
 		case "", "PAYING", "WAIT_BUYER_PAY", "TRADE_CLOSED":
 		default:
 			return status.Error(codes.FailedPrecondition, "订单状态不能自动关闭")
+		}
+		if order.PayType == "demo" && order.Status != "TRADE_CLOSED" {
+			var decision model.OrderTransaction
+			if err := tx.Where("order_sn = ?", number).First(&decision).Error; err != nil {
+				return err
+			}
+			if decision.ExpiresAt == nil {
+				return errors.New("demo order has no expiry")
+			}
+			if time.Now().Before(*decision.ExpiresAt) {
+				return status.Error(codes.Unavailable, "订单尚未到期")
+			}
 		}
 		if order.Status != "TRADE_CLOSED" {
 			if err := tx.Model(&model.OrderInfo{}).Where("id = ?", order.ID).Update("status", "TRADE_CLOSED").Error; err != nil {

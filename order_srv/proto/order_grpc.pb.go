@@ -25,6 +25,7 @@ const (
 	Order_UpdateCartItem_FullMethodName    = "/Order/UpdateCartItem"
 	Order_DeleteCartItem_FullMethodName    = "/Order/DeleteCartItem"
 	Order_CreateOrder_FullMethodName       = "/Order/CreateOrder"
+	Order_GetOrderCreation_FullMethodName  = "/Order/GetOrderCreation"
 	Order_OrderList_FullMethodName         = "/Order/OrderList"
 	Order_OrderDetail_FullMethodName       = "/Order/OrderDetail"
 	Order_UpdateOrderStatus_FullMethodName = "/Order/UpdateOrderStatus"
@@ -41,6 +42,7 @@ type OrderClient interface {
 	DeleteCartItem(ctx context.Context, in *CartItemRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// 订单
 	CreateOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error)
+	GetOrderCreation(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error)
 	OrderList(ctx context.Context, in *OrderFilterRequest, opts ...grpc.CallOption) (*OrderListResponse, error)
 	OrderDetail(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoDetailResponse, error)
 	UpdateOrderStatus(ctx context.Context, in *OrderStatus, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -104,6 +106,16 @@ func (c *orderClient) CreateOrder(ctx context.Context, in *OrderRequest, opts ..
 	return out, nil
 }
 
+func (c *orderClient) GetOrderCreation(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OrderInfoResponse)
+	err := c.cc.Invoke(ctx, Order_GetOrderCreation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *orderClient) OrderList(ctx context.Context, in *OrderFilterRequest, opts ...grpc.CallOption) (*OrderListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(OrderListResponse)
@@ -145,6 +157,7 @@ type OrderServer interface {
 	DeleteCartItem(context.Context, *CartItemRequest) (*emptypb.Empty, error)
 	// 订单
 	CreateOrder(context.Context, *OrderRequest) (*OrderInfoResponse, error)
+	GetOrderCreation(context.Context, *OrderRequest) (*OrderInfoResponse, error)
 	OrderList(context.Context, *OrderFilterRequest) (*OrderListResponse, error)
 	OrderDetail(context.Context, *OrderRequest) (*OrderInfoDetailResponse, error)
 	UpdateOrderStatus(context.Context, *OrderStatus) (*emptypb.Empty, error)
@@ -172,6 +185,9 @@ func (UnimplementedOrderServer) DeleteCartItem(context.Context, *CartItemRequest
 }
 func (UnimplementedOrderServer) CreateOrder(context.Context, *OrderRequest) (*OrderInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateOrder not implemented")
+}
+func (UnimplementedOrderServer) GetOrderCreation(context.Context, *OrderRequest) (*OrderInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetOrderCreation not implemented")
 }
 func (UnimplementedOrderServer) OrderList(context.Context, *OrderFilterRequest) (*OrderListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method OrderList not implemented")
@@ -293,6 +309,24 @@ func _Order_CreateOrder_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Order_GetOrderCreation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OrderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServer).GetOrderCreation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Order_GetOrderCreation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServer).GetOrderCreation(ctx, req.(*OrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Order_OrderList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(OrderFilterRequest)
 	if err := dec(in); err != nil {
@@ -373,6 +407,10 @@ var Order_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateOrder",
 			Handler:    _Order_CreateOrder_Handler,
+		},
+		{
+			MethodName: "GetOrderCreation",
+			Handler:    _Order_GetOrderCreation_Handler,
 		},
 		{
 			MethodName: "OrderList",

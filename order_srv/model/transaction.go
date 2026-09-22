@@ -10,10 +10,16 @@ const (
 
 // OrderTransaction fences a late creation after RocketMQ has decided to cancel.
 type OrderTransaction struct {
-	OrderSn   string `gorm:"primaryKey"`
-	State     int32
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	OrderSn       string `gorm:"primaryKey"`
+	State         int32
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	UserID        int32
+	RequestKey    *string
+	RequestHash   string
+	Snapshot      *string `gorm:"type:json"`
+	ExpiresAt     *time.Time
+	StockReleased bool
 }
 
 func (OrderTransaction) TableName() string { return "order_transaction" }

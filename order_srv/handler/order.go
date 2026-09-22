@@ -15,10 +15,8 @@ import (
 	"grpctest/order_srv/model"
 	"grpctest/order_srv/proto"
 
-	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/consumer"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
-	"github.com/apache/rocketmq-client-go/v2/producer"
 	"github.com/golang/protobuf/ptypes/empty"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -185,12 +183,12 @@ func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitiv
 	if msg == nil || json.Unmarshal(msg.Body, &order) != nil || !validOrderSN.MatchString(order.OrderSn) || order.User <= 0 {
 		o.Code = codes.InvalidArgument
 		o.Detail = "订单消息无效"
-		return primitive.UnknowState
+		return primitive.UnkonwnState
 	}
 	state, err := orderDecision(ctx, order.OrderSn, false)
 	if err != nil {
 		o.Detail = "订单事务记录失败"
-		return primitive.UnknowState
+		return primitive.UnkonwnState
 	}
 	if state == model.OrderCancelled {
 		o.Code = codes.Aborted
@@ -199,7 +197,7 @@ func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitiv
 	}
 	if state == model.OrderCommitted {
 		if err := global.DB.WithContext(ctx).Where("order_sn = ?", order.OrderSn).First(&order).Error; err != nil {
-			return primitive.UnknowState
+			return primitive.UnkonwnState
 		}
 		o.Code = codes.OK
 		o.ID = order.ID
@@ -215,43 +213,19 @@ func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitiv
 		defer done()
 		return cancelOrderMessage(decisionCtx, order.OrderSn)
 	}
-	var cart []model.ShoppingCart
-	if err := global.DB.WithContext(ctx).Where("user = ? AND checked = ?", order.User, true).Find(&cart).Error; err != nil {
-		return fail(codes.Internal, "购物车查询失败")
+	var record model.OrderTransaction
+	if err := global.DB.WithContext(ctx).Where("order_sn = ?", order.OrderSn).First(&record).Error; err != nil {
+		return primitive.UnkonwnState
 	}
-	if len(cart) == 0 {
-		return fail(codes.InvalidArgument, "没有选择结算的商品")
+	var snapshot creationSnapshot
+	if record.Snapshot == nil || json.Unmarshal([]byte(*record.Snapshot), &snapshot) != nil || snapshot.Order.OrderSn != order.OrderSn || snapshot.Order.User != order.User || len(snapshot.Stock) == 0 {
+		return fail(codes.FailedPrecondition, "缺少持久下单快照")
 	}
-	ids := make([]int32, 0, len(cart))
-	nums := map[int32]int32{}
-	for _, item := range cart {
-		if item.Goods <= 0 || item.Nums <= 0 || int64(nums[item.Goods])+int64(item.Nums) > math.MaxInt32 {
-			return fail(codes.InvalidArgument, "购物车数量无效")
-		}
-		if _, ok := nums[item.Goods]; !ok {
-			ids = append(ids, item.Goods)
-		}
-		nums[item.Goods] += item.Nums
+	if record.ExpiresAt != nil && !time.Now().Before(*record.ExpiresAt) {
+		return fail(codes.Aborted, "下单请求已过期")
 	}
-	goods, err := global.GoodsSrvClient.BatchGetGoods(ctx, &proto.BatchGoodsIdInfo{Id: ids})
-	if err != nil {
-		return fail(status.Code(err), "查询商品失败")
-	}
-	if goods == nil || len(goods.Data) != len(ids) {
-		return fail(codes.FailedPrecondition, "购物车中存在无效商品")
-	}
-	var orderGoods []model.OrderGoods
-	var stock []*proto.GoodsInventoryInfo
-	seen := map[int32]bool{}
-	for _, item := range goods.Data {
-		if item == nil || nums[item.Id] <= 0 || seen[item.Id] {
-			return fail(codes.Internal, "商品清单不一致")
-		}
-		seen[item.Id] = true
-		order.OrderMount += item.ShopPrice * float32(nums[item.Id])
-		orderGoods = append(orderGoods, model.OrderGoods{Goods: item.Id, GoodsName: item.Name, GoodsPrice: item.ShopPrice, GoodsImage: item.GoodsFrontImage, Nums: nums[item.Id]})
-		stock = append(stock, &proto.GoodsInventoryInfo{GoodsId: item.Id, Num: nums[item.Id]})
-	}
+	order = snapshot.Order
+	cart, orderGoods, stock := snapshot.Cart, snapshot.Goods, snapshot.Stock
 	if _, err := global.InventorySrvClient.Sell(ctx, &proto.SellInfo{OrderSn: order.OrderSn, GoodsInfo: stock}); err != nil {
 		// Even InvalidArgument/Unavailable is a decision to abort this order; never
 		// infer that nothing committed from an RPC error and discard compensation.
@@ -284,7 +258,7 @@ func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitiv
 				return err
 			}
 		}
-		if err := addOrderEvent(tx, order.OrderSn, "order_timeout", 4); err != nil {
+		if err := addOrderEvent(tx, order.OrderSn, "order_timeout", timeoutDelay(record.ExpiresAt)); err != nil {
 			return err
 		}
 		return tx.Model(&model.OrderTransaction{}).Where("order_sn = ?", order.OrderSn).Update("state", model.OrderCommitted).Error
@@ -296,14 +270,14 @@ func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitiv
 		state, e := orderDecision(decisionCtx, order.OrderSn, true)
 		if e != nil {
 			o.Detail = "订单提交结果待确认"
-			return primitive.UnknowState
+			return primitive.UnkonwnState
 		}
 		if state != model.OrderCommitted {
 			o.Detail = "订单创建失败，已安排返库"
 			return primitive.CommitMessageState
 		}
 		if e := global.DB.WithContext(decisionCtx).Where("order_sn = ?", order.OrderSn).First(&order).Error; e != nil {
-			return primitive.UnknowState
+			return primitive.UnkonwnState
 		}
 	}
 	o.ID = order.ID
@@ -318,85 +292,13 @@ func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitiv
 func (o *OrderListener) CheckLocalTransaction(msg *primitive.MessageExt) primitive.LocalTransactionState {
 	var order struct{ OrderSn string }
 	if msg == nil || json.Unmarshal(msg.Body, &order) != nil || !validOrderSN.MatchString(order.OrderSn) {
-		return primitive.UnknowState
+		return primitive.UnkonwnState
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	// Checking a preparing/missing operation durably cancels it. The execution path
 	// locks the same decision before writing an order, so a late commit cannot resurrect it.
 	return cancelOrderMessage(ctx, order.OrderSn)
-}
-
-// CreateOrder 新建订单
-func (O *OrderServer) CreateOrder(ctx context.Context, req *proto.OrderRequest) (*proto.OrderInfoResponse, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, status.FromContextError(err).Err()
-	}
-	if req == nil || req.UserId <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "用户信息无效")
-	}
-	// 交易运行时由统一的初始化流程提供，未就绪时不能开始写订单或扣库存。
-	if global.ServerConfig == nil || global.DB == nil || global.GoodsSrvClient == nil ||
-		global.InventorySrvClient == nil || global.MQOrder == nil || global.MQInventory == nil {
-		return nil, status.Error(codes.FailedPrecondition, "订单交易服务尚未就绪")
-	}
-	//新建订单：
-	//1. 从购物车获取商品信息
-	//2. 去查询商品服务(跨服务)
-	//3. 调用库存服务扣减库存(跨服务)
-	//4.订单的基本信息表 和订单的商品信息表
-	//5.从购物车中删除已购买记录
-
-	//使用消息队列,将扣减库存消息放入mq中
-
-	//初始化生产者
-	orderListener := OrderListener{Ctx: ctx}
-	q, err := rocketmq.NewTransactionProducer(&orderListener,
-		producer.WithNameServer([]string{fmt.Sprintf("%s:%d", global.ServerConfig.MqInfo.Host, global.ServerConfig.MqInfo.Port)}))
-	if err != nil {
-		zap.S().Errorf("生成生产者失败：%s", err.Error())
-		return nil, err
-	}
-
-	//启动生产者
-	if err = q.Start(); err != nil {
-		zap.S().Errorf("启动生产者失败：%s", err.Error())
-		return nil, err
-	}
-
-	defer func() {
-		if err := q.Shutdown(); err != nil {
-			zap.S().Errorw("关闭事务消息生产者失败", "error", err)
-		}
-	}()
-	//生成订单的基本信息表
-	order := model.OrderInfo{
-		User:         req.UserId,
-		OrderSn:      GenerationSn(req.UserId),
-		Address:      req.Address,
-		SignerName:   req.Name,
-		SingerMobile: req.Mobile,
-		Post:         req.Post,
-	}
-
-	jsonString, err := json.Marshal(&order)
-	if err != nil {
-		zap.S().Errorf("结构体转换失败:%s", err)
-	}
-
-	//发送消息
-	msg := primitive.NewMessage("order-reback", jsonString)
-	_, err = q.SendMessageInTransaction(ctx, msg)
-	if err != nil {
-		fmt.Printf("发送失败%s", err)
-		return nil, status.Errorf(codes.Internal, "发送消息失败")
-	}
-
-	if orderListener.Code != codes.OK {
-		return nil, status.Errorf(codes.Internal, orderListener.Detail)
-	}
-
-	return &proto.OrderInfoResponse{Id: orderListener.ID, OrderSn: order.OrderSn, Total: orderListener.OrderAmount}, nil
 }
 
 // OrderList 订单列表
@@ -409,19 +311,7 @@ func (O *OrderServer) OrderList(ctx context.Context, req *proto.OrderFilterReque
 	Rsp.Total = int32(total)
 	global.DB.Scopes(Paginate(int(req.Pages), int(req.PagePerNums))).Where(&model.OrderInfo{User: req.UserId}).Find(&orders)
 	for _, order := range orders {
-		Rsp.Data = append(Rsp.Data, &proto.OrderInfoResponse{
-			Id:      order.ID,
-			UserId:  order.User,
-			OrderSn: order.OrderSn,
-			PayType: order.PayType,
-			Status:  order.Status,
-			Post:    order.Post,
-			Address: order.Address,
-			Name:    order.SignerName,
-			Mobile:  order.SingerMobile,
-			Total:   order.OrderMount,
-			AddTime: order.CreatedAt.Format("2006-04-02 15:04:05"),
-		})
+		Rsp.Data = append(Rsp.Data, orderResponse(order))
 	}
 	return &Rsp, nil
 }
@@ -434,7 +324,7 @@ func (O *OrderServer) OrderDetail(ctx context.Context, req *proto.OrderRequest) 
 		return nil, status.Errorf(codes.NotFound, "订单记录不存在")
 	}
 
-	OrderInfo := proto.OrderInfoResponse{}
+	OrderInfo := *orderResponse(order)
 
 	OrderInfo.Id = order.ID
 	OrderInfo.UserId = order.User
@@ -490,6 +380,9 @@ func (O *OrderServer) UpdateOrderStatus(ctx context.Context, req *proto.OrderSta
 		var order model.OrderInfo
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("order_sn = ?", req.OrderSn).First(&order).Error; err != nil {
 			return err
+		}
+		if order.PayType == "demo" {
+			return status.Error(codes.FailedPrecondition, "演示订单不支持付款")
 		}
 		if order.Status == req.Status {
 			return nil

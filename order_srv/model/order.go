@@ -24,9 +24,10 @@ type OrderInfo struct {
 	PayType string `gorm:"type:varchar(20) comment 'alipay(支付宝)， wechat(微信)'"`
 
 	//status大家可以考虑使用iota来做
-	Status     string     `gorm:"type:varchar(20)  comment 'PAYING(待支付), TRADE_SUCCESS(成功)， TRADE_CLOSED(超时关闭), WAIT_BUYER_PAY(交易创建), TRADE_FINISHED(交易结束)'"`
-	TradeNo    string     `gorm:"type:varchar(100) comment '交易号'"` //交易号，其实就是支付宝或者微信的的订单号，用于查账
-	OrderMount float32    //订单金额
+	Status     string  `gorm:"type:varchar(20)  comment 'PAYING(待支付), TRADE_SUCCESS(成功)， TRADE_CLOSED(超时关闭), WAIT_BUYER_PAY(交易创建), TRADE_FINISHED(交易结束)'"`
+	TradeNo    string  `gorm:"type:varchar(100) comment '交易号'"` //交易号，其实就是支付宝或者微信的的订单号，用于查账
+	OrderMount float32 //订单金额
+	TotalCents *int64
 	PayTime    *time.Time `gorm:"type:datetime"`
 
 	Address      string `gorm:"type:varchar(100)"`
@@ -50,6 +51,7 @@ type OrderGoods struct {
 	GoodsName  string `gorm:"type:varchar(100);index"`
 	GoodsImage string `gorm:"type:varchar(200)"`
 	GoodsPrice float32
+	UnitCents  *int64
 	Nums       int32 `gorm:"type:int"`
 }
 

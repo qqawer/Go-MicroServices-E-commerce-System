@@ -16,4 +16,8 @@ CGO_ENABLED=0 go build -mod=readonly -trimpath \
 # These regressions use local HTTP/gRPC fixtures and sqlmock. Do not replace this
 # allowlist with ./...: old example packages may initialize external services.
 CGO_ENABLED=1 go test -mod=readonly -race -count=1 -timeout=90s \
-  ./order_srv ./order_srv/initialize ./order_srv/handler ./goods_srv/handler ./inventory_srv/handler
+  ./order_srv ./order_srv/initialize ./order_srv/handler ./goods_srv/handler ./inventory_srv ./inventory_srv/initialize ./inventory_srv/handler ./internal/mqruntime
+
+# Keep the reproduced third-party cache race covered without a broker.
+CGO_ENABLED=1 go test -mod=readonly -race -count=1 -timeout=30s \
+  github.com/apache/rocketmq-client-go/v2/consumer -run '^TestLocal'

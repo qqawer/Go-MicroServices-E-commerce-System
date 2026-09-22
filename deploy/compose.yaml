@@ -79,6 +79,48 @@ services:
       timeout: 5s
       retries: 15
 
+  mqnamesrv:
+    <<: *defaults
+    image: apache/rocketmq:5.5.0@sha256:7e8f6c9dbd9df742ed26ba69c00d4ad69e2f86a56f3ca7782ff8144dd0798132
+    environment:
+      JAVA_OPT_EXT: -Xms128m -Xmx128m -Xmn64m
+    command: ["sh", "mqnamesrv"]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9876'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  mq-storage:
+    image: apache/rocketmq:5.5.0@sha256:7e8f6c9dbd9df742ed26ba69c00d4ad69e2f86a56f3ca7782ff8144dd0798132
+    user: "0:0"
+    network_mode: none
+    command: ["sh", "-ec", "chown -R rocketmq:rocketmq /home/rocketmq/store /home/rocketmq/logs"]
+    volumes:
+      - mq-store:/home/rocketmq/store
+      - mq-logs:/home/rocketmq/logs
+
+  mqbroker:
+    <<: *defaults
+    image: apache/rocketmq:5.5.0@sha256:7e8f6c9dbd9df742ed26ba69c00d4ad69e2f86a56f3ca7782ff8144dd0798132
+    environment:
+      JAVA_OPT_EXT: -Xms256m -Xmx512m -Xmn128m -XX:MaxDirectMemorySize=256m
+    command: ["sh", "mqbroker", "-c", "/home/rocketmq/broker.conf"]
+    volumes:
+      - ./rocketmq/broker.conf:/home/rocketmq/broker.conf:ro
+      - mq-store:/home/rocketmq/store
+      - mq-logs:/home/rocketmq/logs
+    depends_on:
+      mqnamesrv: {condition: service_healthy}
+      mq-storage: {condition: service_completed_successfully}
+    # Only the backend Docker network can reach MQ; no public ports are needed.
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/10911'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
   jenkins:
     <<: *defaults
     profiles: [ci]
@@ -117,3 +159,5 @@ volumes:
   nacos-logs:
   consul-data:
   jenkins-data:
+  mq-store:
+  mq-logs:

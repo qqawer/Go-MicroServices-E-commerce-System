@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/consumer"
@@ -28,17 +29,20 @@ import (
 type transactionGoods struct{ proto.GoodsClient }
 
 func (*transactionGoods) BatchGetGoods(context.Context, *proto.BatchGoodsIdInfo, ...grpc.CallOption) (*proto.GoodsListResponse, error) {
-	return &proto.GoodsListResponse{Data: []*proto.GoodsInfoResponse{{Id: 421, Name: "transaction goods", ShopPrice: 12.5}}}, nil
+	return &proto.GoodsListResponse{Data: []*proto.GoodsInfoResponse{{Id: 421, Name: "transaction goods", ShopPrice: 12.5, OnSale: true, InventoryReady: true}}}, nil
 }
 
 type transactionStock struct {
 	proto.InventoryClient
 	sell  func(context.Context, *proto.SellInfo) error
 	calls int
+	mu    sync.Mutex
 }
 
 func (f *transactionStock) Sell(ctx context.Context, r *proto.SellInfo, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	f.mu.Lock()
 	f.calls++
+	f.mu.Unlock()
 	if f.sell != nil {
 		return nil, f.sell(ctx, r)
 	}
@@ -83,6 +87,18 @@ func transactionSetup(t *testing.T) (*gorm.DB, *transactionStock, *transactionPr
 	return db, stock, producer
 }
 func orderMessage(number string, user int32) *primitive.Message {
+	var cart []model.ShoppingCart
+	global.DB.Where("user = ? AND checked = ?", user, true).Find(&cart)
+	goods := []model.OrderGoods{}
+	stock := []*proto.GoodsInventoryInfo{}
+	for _, c := range cart {
+		goods = append(goods, model.OrderGoods{Goods: c.Goods, GoodsName: "test", GoodsPrice: 12.5, Nums: c.Nums})
+		stock = append(stock, &proto.GoodsInventoryInfo{GoodsId: c.Goods, Num: c.Nums})
+	}
+	raw, _ := json.Marshal(map[string]interface{}{"Order": model.OrderInfo{OrderSn: number, User: user, OrderMount: 25}, "Cart": cart, "Goods": goods, "Stock": stock})
+	snapshot := string(raw)
+	expiry := time.Now().Add(time.Hour)
+	global.DB.Create(&model.OrderTransaction{OrderSn: number, Snapshot: &snapshot, ExpiresAt: &expiry})
 	body, _ := json.Marshal(model.OrderInfo{OrderSn: number, User: user})
 	return primitive.NewMessage("order-reback", body)
 }
@@ -150,8 +166,8 @@ func TestOrderCheckFencesLateExecution(t *testing.T) {
 func TestOrderLostCommitReplyDoesNotRefundCommittedOrder(t *testing.T) {
 	db, _, producer := transactionSetup(t)
 	db.Create(&model.ShoppingCart{User: 900003, Goods: 421, Nums: 2, Checked: true})
-	testdb.FailCommit(t, db, 2, true) // prepare decision, then business commit
 	msg := orderMessage("tx-order-commit-lost", 900003)
+	testdb.FailCommit(t, db, 2, true) // prepare decision, then business commit
 	listener := &handler.OrderListener{}
 	state := listener.ExecuteLocalTransaction(msg)
 	if state != primitive.RollbackMessageState || listener.Code != codes.OK || listener.ID <= 0 {
@@ -241,7 +257,7 @@ func TestOrderQueryErrorKeepsMessageUnknown(t *testing.T) {
 	name := "test:order_query_failure"
 	db.Callback().Query().Before("gorm:query").Register(name, func(tx *gorm.DB) { tx.AddError(errors.New("injected query failure")) })
 	defer db.Callback().Query().Remove(name)
-	if state := (&handler.OrderListener{}).CheckLocalTransaction(timeoutMessage("tx-query-failure")); state != primitive.UnknowState {
+	if state := (&handler.OrderListener{}).CheckLocalTransaction(timeoutMessage("tx-query-failure")); state != primitive.UnkonwnState {
 		t.Fatal("query failure became a final decision", state)
 	}
 }
@@ -262,4 +278,8 @@ func TestTimeoutLostCommitReplyRetriesPersistedRefund(t *testing.T) {
 	if len(producer.sent) != 1 {
 		t.Fatal("lost refund after unknown closing commit")
 	}
+}
+
+func (f *transactionStock) Reback(context.Context, *proto.SellInfo, ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }

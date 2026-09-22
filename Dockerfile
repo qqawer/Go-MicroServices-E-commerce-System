@@ -5,6 +5,7 @@ ARG TARGETARCH=amd64
 ARG SERVICE
 WORKDIR /src
 COPY go.mod go.sum ./
+COPY third_party/rocketmq-client-go/go.mod third_party/rocketmq-client-go/go.sum ./third_party/rocketmq-client-go/
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 RUN case "$SERVICE" in user_srv|goods_srv|inventory_srv|order_srv) ;; *) echo "Invalid SERVICE" >&2; exit 1;; esac

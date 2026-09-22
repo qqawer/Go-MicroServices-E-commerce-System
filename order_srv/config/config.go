@@ -1,5 +1,7 @@
 package config
 
+import "grpctest/internal/mqruntime"
+
 type MysqlConfig struct {
 	Host     string `mapstructure:"host" json:"host"`
 	Port     string `mapstructure:"port" json:"port"`
@@ -17,12 +19,7 @@ type GoodsSrvConfig struct {
 	Name string `mapstructure:"name" json:"name"`
 }
 
-type MqConfig struct {
-	Host      string `mapstructure:"host" json:"host"`
-	Port      int    `mapstructure:"port" json:"port"`
-	GroupName string `mapstructure:"group_name" json:"group_name"`
-	Topic     string `mapstructure:"topic" json:"topic"`
-}
+type MqConfig = mqruntime.Config
 
 type ServerConfig struct {
 	//Host string `mapstructure:"host" json:"host"`

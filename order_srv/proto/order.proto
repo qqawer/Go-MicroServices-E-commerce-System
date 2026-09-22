@@ -12,6 +12,7 @@ service Order {
 
     //订单
     rpc CreateOrder(OrderRequest)returns (OrderInfoResponse); //创建订单
+    rpc GetOrderCreation(OrderRequest) returns (OrderInfoResponse); // Current user + requestKey, including pending/cancelled creation.
     rpc OrderList(OrderFilterRequest) returns (OrderListResponse); // 订单列表
     rpc OrderDetail(OrderRequest) returns (OrderInfoDetailResponse); // 订单详情,需要给出商品信息
     rpc UpdateOrderStatus(OrderStatus) returns (google.protobuf.Empty); // 修改订单状态
@@ -52,6 +53,7 @@ message OrderRequest {
     string name = 4;
     string mobile= 5;
     string post = 6;
+    string requestKey = 7; // Required for creation/retry; scoped to userId.
 }
 
 message OrderInfoResponse {
@@ -66,6 +68,7 @@ message OrderInfoResponse {
     string name = 9;
     string mobile= 10;
     string addTime = 11;
+    int64 totalCents = 12;
 }
 
 message OrderFilterRequest {
