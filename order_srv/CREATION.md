@@ -48,6 +48,8 @@ AWS 的 dev 配置由 `deploy/scripts/configure-mq.py --apply` 备份后补充�
 
 库存只需 enabled、host、port。未启用 MQ 的本地 RPC 仍可提供购物车/库存基础接口，创建订单保持未就绪拦截。Mac 只运行 Web 时不需要安装或直连 MQ；不要为 MQ 新开公网入站规则。
 
+SDK 的 NameServer 参数只接受 IP 地址。运行时使用带超时的 DNS resolver 将 `mqnamesrv` 转为地址，并在 SDK 刷新时重新解析，容器重建不需要手工改 Nacos IP。真实 MQ 回归使用主机名，防止只测 `127.0.0.1` 漏掉此部署差异。
+
 在服务器 deploy 目录执行（先同步本批部署文件）：
 
 ```sh

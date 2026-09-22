@@ -23,7 +23,7 @@ import (
 func TestMQService(t *testing.T) {
 	global.DB = testdb.Open(t, "grpctest_inventory_srv")
 	port, _ := strconv.Atoi(os.Getenv("TEST_MQ_PORT"))
-	global.ServerConfig = &config.ServerConfig{MqInfo: mqruntime.Config{Enabled: true, Host: "127.0.0.1", Port: port}}
+	global.ServerConfig = &config.ServerConfig{MqInfo: mqruntime.Config{Enabled: true, Host: "localhost", Port: port}}
 	closeMQ, e := initialize.InitMQ(context.Background())
 	if e != nil {
 		t.Fatal(e)

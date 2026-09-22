@@ -38,7 +38,7 @@ func (c Config) Validate(order bool) error {
 	return nil
 }
 func Producer(c Config, group string) (rocketmq.Producer, error) {
-	p, err := rocketmq.NewProducer(producer.WithNameServer([]string{c.Address()}), producer.WithGroupName(group), producer.WithRetry(0), producer.WithSendMsgTimeout(3*time.Second))
+	p, err := rocketmq.NewProducer(producer.WithNsResolver(nameServerResolver(c)), producer.WithGroupName(group), producer.WithRetry(0), producer.WithSendMsgTimeout(3*time.Second))
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func Producer(c Config, group string) (rocketmq.Producer, error) {
 }
 func TransactionProducer(c Config, l primitive.TransactionListener) (rocketmq.TransactionProducer, error) {
 	drain := &drainingTransaction{listener: l}
-	p, err := rocketmq.NewTransactionProducer(drain, producer.WithNameServer([]string{c.Address()}), producer.WithGroupName("grpctest-order-transaction"), producer.WithRetry(0), producer.WithSendMsgTimeout(3*time.Second))
+	p, err := rocketmq.NewTransactionProducer(drain, producer.WithNsResolver(nameServerResolver(c)), producer.WithGroupName("grpctest-order-transaction"), producer.WithRetry(0), producer.WithSendMsgTimeout(3*time.Second))
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func TransactionProducer(c Config, l primitive.TransactionListener) (rocketmq.Tr
 	return drain, nil
 }
 func Consumer(c Config, group, topic string, callback func(context.Context, ...*primitive.MessageExt) (consumer.ConsumeResult, error)) (rocketmq.PushConsumer, error) {
-	p, err := rocketmq.NewPushConsumer(consumer.WithNameServer([]string{c.Address()}), consumer.WithGroupName(group), consumer.WithConsumeFromWhere(consumer.ConsumeFromFirstOffset), consumer.WithConsumeMessageBatchMaxSize(16), consumer.WithMaxReconsumeTimes(16), consumer.WithConsumeTimeout(time.Minute))
+	p, err := rocketmq.NewPushConsumer(consumer.WithNsResolver(nameServerResolver(c)), consumer.WithGroupName(group), consumer.WithConsumeFromWhere(consumer.ConsumeFromFirstOffset), consumer.WithConsumeMessageBatchMaxSize(16), consumer.WithMaxReconsumeTimes(16), consumer.WithConsumeTimeout(time.Minute))
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func Consumer(c Config, group, topic string, callback func(context.Context, ...*
 func WaitTopics(parent context.Context, c Config, topics ...string) error {
 	ctx, cancel := context.WithTimeout(parent, 45*time.Second)
 	defer cancel()
-	client, err := admin.NewAdmin(admin.WithResolver(primitive.NewPassthroughResolver([]string{c.Address()})))
+	client, err := admin.NewAdmin(admin.WithResolver(nameServerResolver(c)))
 	if err != nil {
 		return err
 	}

@@ -24,7 +24,7 @@ import (
 func TestMQService(t *testing.T) {
 	global.DB = testdb.Open(t, "grpctest_orders_srv")
 	port, _ := strconv.Atoi(os.Getenv("TEST_MQ_PORT"))
-	global.ServerConfig = &config.ServerConfig{MqInfo: mqruntime.Config{Enabled: true, Host: "127.0.0.1", Port: port, Mode: "demo", OrderTTLSeconds: 30}}
+	global.ServerConfig = &config.ServerConfig{MqInfo: mqruntime.Config{Enabled: true, Host: "localhost", Port: port, Mode: "demo", OrderTTLSeconds: 30}}
 	goods, e := grpc.NewClient(os.Getenv("TEST_GOODS_ADDRESS"), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if e != nil {
 		t.Fatal(e)
