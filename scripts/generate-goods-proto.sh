@@ -14,3 +14,12 @@ for directory in goods_srv/model/proto order_srv/proto; do
       --go-grpc_out=. --go-grpc_opt=paths=source_relative goods.proto
   )
 done
+
+# Inventory is shared by goods and order RPC. Keep both generated copies aligned.
+for directory in inventory_srv/model/proto order_srv/proto; do
+  (
+    cd -- "$directory"
+    protoc -I . --go_out=. --go_opt=paths=source_relative \
+      --go-grpc_out=. --go-grpc_opt=paths=source_relative inventory.proto
+  )
+done

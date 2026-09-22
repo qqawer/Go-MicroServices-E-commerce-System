@@ -172,3 +172,7 @@ SSH 的安全组必须允许 Actions runner 到达服务器；只允许 Mac 的 
 首次 Jenkins bootstrap 只执行一次，重建镜像不会覆盖已建的任务；更新 Jenkinsfile 时需同步更新任务的 Pipeline 定义。业务发布脚本从部署目录读取，变更后需同步服务器文件。固定的镜像 digest、Actions SHA 与插件版本需定期有计划地更新。
 
 参考：[Docker Ubuntu 安装](https://docs.docker.com/engine/install/ubuntu/)、[GitHub 镜像发布](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)、[Jenkins Docker](https://www.jenkins.io/doc/book/installing/docker/)、[Jenkins Remote API](https://www.jenkins.io/doc/book/using/remote-access-api/)、[Nacos 2.5 鉴权](https://www.nacos.io/docs/v2.5/manual/admin/auth/)。
+
+## 业务表增量升级
+
+商品创建/库存初始化从 `0002_goods_inventory_initialization.sql` 起依赖新增列和表。部署前同步 `mysql/` 与 `scripts/migrate-business.py`，按 `goods_srv/CREATION.md` 的顺序先 `check`、备份迁移 `up`，再发布 RPC。不要向已有 AWS 数据库重导商品 SQL。`release.py` 会在容器更新前验证完整迁移历史和校验和。

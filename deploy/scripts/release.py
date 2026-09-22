@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Deploy one complete repository release; restore previous containers on failure."""
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -71,6 +72,16 @@ def main():
         expected = {'grpctest_user_srv', 'grpctest_goods_srv', 'grpctest_inventory_srv', 'grpctest_orders_srv'}
         if not expected.issubset(schemas):
             raise ValueError('Business database tables are missing: ' + ', '.join(sorted(expected - schemas)))
+        if group == 'rpc':
+            # Additive schema changes are applied and backed up explicitly before
+            # rollout. Never restart RPC containers against missing/dirty tables.
+            expected_history = ['\t'.join((str(index), path.name, hashlib.sha256(path.read_bytes()).hexdigest(), '0'))
+                                for index, path in enumerate(sorted((ROOT / 'mysql/migrations').glob('*.sql')), 1)]
+            history_sql = 'SELECT version,filename,sha256,dirty FROM grpctest_migrations.schema_migrations ORDER BY version'
+            history = run(infra + ['exec', '-T', 'mysql', 'sh', '-ec',
+                          'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -N -B -e "$1"', 'sh', history_sql], capture=True).stdout.strip().splitlines()
+            if not expected_history or history != expected_history:
+                raise ValueError('Business schema is not at the reviewed migration version; run migrate-business.py check/up before deployment')
         previous = env_file(release_file) if release_file.exists() else {}
         candidate = dict(previous)
         for service, image in images.items():

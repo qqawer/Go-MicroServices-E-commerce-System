@@ -8,6 +8,7 @@ import (
 	"grpctest/goods_srv/global"
 	"grpctest/goods_srv/model"
 	"grpctest/goods_srv/model/proto"
+	invproto "grpctest/inventory_srv/model/proto"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -16,13 +17,16 @@ import (
 	"gorm.io/gorm"
 )
 
-type GoodsServer struct{
-	proto.UnimplementedGoodsServer 
+type GoodsServer struct {
+	proto.UnimplementedGoodsServer
+	Inventory invproto.InventoryClient
 }
-//ModelToResponse model转response
+
+// ModelToResponse model转response
 func ModelToResponse(goods model.Goods) proto.GoodsInfoResponse {
 	return proto.GoodsInfoResponse{
 		Id:              goods.ID,
+		InventoryReady:  goods.InventoryReady,
 		CategoryId:      goods.CategoryID,
 		Name:            goods.Name,
 		GoodsSn:         goods.GoodsSn,
@@ -50,6 +54,7 @@ func ModelToResponse(goods model.Goods) proto.GoodsInfoResponse {
 		},
 	}
 }
+
 // // 商品接口
 func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterRequest) (*proto.GoodsListResponse, error) {
 	//关键词搜索、查询新品、查询热门商品、通过价格区间筛选， 通过商品分类筛选
@@ -89,9 +94,9 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 
 		if category.Level == 1 {
 			subQuery = fmt.Sprintf("select id from category where parent_category_id in (select id from category WHERE parent_category_id=%d)", req.TopCategory)
-		}else if category.Level == 2 {
+		} else if category.Level == 2 {
 			subQuery = fmt.Sprintf("select id from category WHERE parent_category_id=%d", req.TopCategory)
-		}else if category.Level == 3 {
+		} else if category.Level == 3 {
 			subQuery = fmt.Sprintf("select id from category WHERE id=%d", req.TopCategory)
 		}
 
@@ -115,8 +120,8 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 	return goodsListResponse, nil
 }
 
-//BatchGetGoods 查询多个商品信息
-func (s *GoodsServer) BatchGetGoods(ctx context.Context, req *proto.BatchGoodsIdInfo) (*proto.GoodsListResponse, error){
+// BatchGetGoods 查询多个商品信息
+func (s *GoodsServer) BatchGetGoods(ctx context.Context, req *proto.BatchGoodsIdInfo) (*proto.GoodsListResponse, error) {
 	goodsListResponse := &proto.GoodsListResponse{}
 	var goods []model.Goods
 
@@ -130,52 +135,16 @@ func (s *GoodsServer) BatchGetGoods(ctx context.Context, req *proto.BatchGoodsId
 	return goodsListResponse, nil
 }
 
-//CreateGoods 添加商品
-func (s *GoodsServer) CreateGoods(ctx context.Context, req *proto.CreateGoodsInfo) (*proto.GoodsInfoResponse, error) {
-	var category model.Category
-	if result := global.DB.First(&category, req.CategoryId); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.InvalidArgument, "商品分类不存在")
-	}
-
-	var brand model.Brands
-	if result := global.DB.First(&brand, req.BrandId); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.InvalidArgument, "品牌不存在")
-	}
-	//这里没有看到图片文件是如何上传， 在微服务中 普通的文件上传已经不再使用
-	goods := model.Goods{
-		Brands: brand,
-		BrandsID: brand.ID,
-		Category: category,
-		CategoryID: category.ID,
-		Name: req.Name,
-		GoodsSn: req.GoodsSn,
-		MarketPrice: req.MarketPrice,
-		ShopPrice: req.ShopPrice,
-		GoodsBrief: req.GoodsBrief,
-		ShipFree: req.ShipFree,
-		Images: req.Images,
-		DescImages: req.DescImages,
-		GoodsFrontImage: req.GoodsFrontImage,
-		IsNew: req.IsNew,
-		IsHot: req.IsHot,
-		OnSale: req.OnSale,
-	}
-
-	global.DB.Save(&goods)
-	return &proto.GoodsInfoResponse{
-		Id:  goods.ID,
-	}, nil
-}
-
-//DeleteGoods 删除商品
+// DeleteGoods 删除商品
 func (s *GoodsServer) DeleteGoods(ctx context.Context, req *proto.DeleteGoodsInfo) (*emptypb.Empty, error) {
 	if result := global.DB.Delete(&model.Goods{}, req.Id); result.RowsAffected == 0 {
 		return nil, status.Errorf(codes.NotFound, "商品不存在")
 	}
 	return &emptypb.Empty{}, nil
 }
-//GetGoodsDetail 根据id查询商品
-func (s *GoodsServer) GetGoodsDetail(ctx context.Context, req *proto.GoodInfoRequest) (*proto.GoodsInfoResponse, error){
+
+// GetGoodsDetail 根据id查询商品
+func (s *GoodsServer) GetGoodsDetail(ctx context.Context, req *proto.GoodInfoRequest) (*proto.GoodsInfoResponse, error) {
 	var goods model.Goods
 
 	err := global.DB.WithContext(ctx).Preload("Category").Preload("Brands").First(&goods, req.Id).Error

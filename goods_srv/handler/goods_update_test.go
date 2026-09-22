@@ -41,7 +41,7 @@ func TestGoodsStatusDatabaseErrors(t *testing.T) {
 				mock.ExpectQuery("SELECT").WillReturnError(failure)
 				mock.ExpectRollback()
 			} else {
-				mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(421))
+				mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "inventory_ready"}).AddRow(421, true))
 				if stage == "write" {
 					mock.ExpectExec("UPDATE").WillReturnError(failure)
 					mock.ExpectRollback()

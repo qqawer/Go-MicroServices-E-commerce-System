@@ -20,6 +20,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	Goods_GetGoodsInventory_FullMethodName    = "/Goods/GetGoodsInventory"
 	Goods_GoodsList_FullMethodName            = "/Goods/GoodsList"
 	Goods_BatchGetGoods_FullMethodName        = "/Goods/BatchGetGoods"
 	Goods_CreateGoods_FullMethodName          = "/Goods/CreateGoods"
@@ -51,6 +52,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GoodsClient interface {
+	GetGoodsInventory(ctx context.Context, in *GoodInfoRequest, opts ...grpc.CallOption) (*GoodsInventoryResponse, error)
 	// 商品接口
 	GoodsList(ctx context.Context, in *GoodsFilterRequest, opts ...grpc.CallOption) (*GoodsListResponse, error)
 	// 现在用户提交订单有多个商品，你得批量查询商品的信息吧
@@ -92,6 +94,16 @@ type goodsClient struct {
 
 func NewGoodsClient(cc grpc.ClientConnInterface) GoodsClient {
 	return &goodsClient{cc}
+}
+
+func (c *goodsClient) GetGoodsInventory(ctx context.Context, in *GoodInfoRequest, opts ...grpc.CallOption) (*GoodsInventoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GoodsInventoryResponse)
+	err := c.cc.Invoke(ctx, Goods_GetGoodsInventory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *goodsClient) GoodsList(ctx context.Context, in *GoodsFilterRequest, opts ...grpc.CallOption) (*GoodsListResponse, error) {
@@ -348,6 +360,7 @@ func (c *goodsClient) UpdateCategoryBrand(ctx context.Context, in *CategoryBrand
 // All implementations must embed UnimplementedGoodsServer
 // for forward compatibility.
 type GoodsServer interface {
+	GetGoodsInventory(context.Context, *GoodInfoRequest) (*GoodsInventoryResponse, error)
 	// 商品接口
 	GoodsList(context.Context, *GoodsFilterRequest) (*GoodsListResponse, error)
 	// 现在用户提交订单有多个商品，你得批量查询商品的信息吧
@@ -391,6 +404,9 @@ type GoodsServer interface {
 // pointer dereference when methods are called.
 type UnimplementedGoodsServer struct{}
 
+func (UnimplementedGoodsServer) GetGoodsInventory(context.Context, *GoodInfoRequest) (*GoodsInventoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetGoodsInventory not implemented")
+}
 func (UnimplementedGoodsServer) GoodsList(context.Context, *GoodsFilterRequest) (*GoodsListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GoodsList not implemented")
 }
@@ -485,6 +501,24 @@ func RegisterGoodsServer(s grpc.ServiceRegistrar, srv GoodsServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&Goods_ServiceDesc, srv)
+}
+
+func _Goods_GetGoodsInventory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GoodInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GoodsServer).GetGoodsInventory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Goods_GetGoodsInventory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GoodsServer).GetGoodsInventory(ctx, req.(*GoodInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Goods_GoodsList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -944,6 +978,10 @@ var Goods_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "Goods",
 	HandlerType: (*GoodsServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetGoodsInventory",
+			Handler:    _Goods_GetGoodsInventory_Handler,
+		},
 		{
 			MethodName: "GoodsList",
 			Handler:    _Goods_GoodsList_Handler,

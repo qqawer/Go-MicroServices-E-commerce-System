@@ -24,31 +24,6 @@ type InventoryServer struct{
 	proto.UnimplementedInventoryServer
 }
 
-//SetInv 设置库存或者库存更新
-func (i *InventoryServer) SetInv(c context.Context, req *proto.GoodsInventoryInfo) (*empty.Empty, error) {
-	var inventory model.Inventory
-
-	global.DB.Where(&model.Inventory{Goods: req.GoodsId}).First(&inventory)
-	inventory.Goods = req.GoodsId
-	inventory.Stocks = req.Num
-	global.DB.Save(&inventory)
-
-	return &empty.Empty{}, nil
-}
-
-//InvDetail 查询库存
-func (i *InventoryServer) InvDetail(c context.Context, req *proto.GoodsInventoryInfo) (*proto.GoodsInventoryInfo, error) {
-	var inventory model.Inventory
-	if result := global.DB.Where(&model.Inventory{Goods: req.GoodsId}).First(&inventory); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.NotFound, "库存信息不存在")
-	}
-
-	return &proto.GoodsInventoryInfo{
-		GoodsId: inventory.Goods,
-		Num:     inventory.Stocks,
-	}, nil
-}
-
 //使用mutex只能在单个服务实例上进行并发锁
 //当多个服务实例运行至不同服务器且同时访问一个数据库时
 //mutex的锁就不起作用了，此时可以使用mysql的锁来完成分布式锁的功能

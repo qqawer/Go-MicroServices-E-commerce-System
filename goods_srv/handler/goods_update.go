@@ -81,9 +81,13 @@ func (s *GoodsServer) UpdateGoodsStatus(ctx context.Context, req *proto.UpdateGo
 }
 
 func lockGoodsForUpdate(tx *gorm.DB, id int32) error {
-	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&model.Goods{}, id).Error
+	var goods model.Goods
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "inventory_ready").First(&goods, id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return status.Error(codes.NotFound, "商品不存在")
+	}
+	if err == nil && !goods.InventoryReady {
+		return status.Error(codes.FailedPrecondition, "商品库存尚未初始化，请先使用原请求完成创建")
 	}
 	return err
 }
