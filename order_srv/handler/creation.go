@@ -19,6 +19,7 @@ import (
 	"gorm.io/gorm/clause"
 	"grpctest/order_srv/global"
 	"grpctest/order_srv/model"
+	"grpctest/order_srv/payment"
 	"grpctest/order_srv/proto"
 )
 
@@ -102,7 +103,14 @@ func prepareCreation(ctx context.Context, req *proto.OrderRequest) (model.OrderT
 	if goods == nil || len(goods.Data) != len(ids) {
 		return record, status.Error(codes.FailedPrecondition, "购物车中存在无效商品")
 	}
-	snapshot := creationSnapshot{Cart: cart, Order: model.OrderInfo{User: req.UserId, OrderSn: GenerationSn(req.UserId), Address: req.Address, SignerName: req.Name, SingerMobile: req.Mobile, Post: req.Post, PayType: "demo"}}
+	payType := global.ServerConfig.MqInfo.Mode
+	if payType != "demo" && payType != "alipay" {
+		return record, status.Error(codes.FailedPrecondition, "订单支付模式无效")
+	}
+	if payType == "alipay" && (!global.ServerConfig.Alipay.Enabled || global.PaymentGateway == nil) {
+		return record, status.Error(codes.FailedPrecondition, "支付宝支付尚未就绪")
+	}
+	snapshot := creationSnapshot{Cart: cart, Order: model.OrderInfo{User: req.UserId, OrderSn: GenerationSn(req.UserId), Address: req.Address, SignerName: req.Name, SingerMobile: req.Mobile, Post: req.Post, PayType: payType}}
 	var total int64
 	seen := map[int32]bool{}
 	for _, item := range goods.Data {
@@ -130,6 +138,9 @@ func prepareCreation(ctx context.Context, req *proto.OrderRequest) (model.OrderT
 		snapshot.Goods = append(snapshot.Goods, model.OrderGoods{Goods: item.Id, GoodsName: item.Name, GoodsImage: item.GoodsFrontImage, GoodsPrice: float32(cents) / 100, UnitCents: &cents, Nums: nums[item.Id]})
 		snapshot.Stock = append(snapshot.Stock, &proto.GoodsInventoryInfo{GoodsId: item.Id, Num: nums[item.Id]})
 	}
+	if payType == "alipay" && total > payment.MaxAmountCents {
+		return record, status.Error(codes.InvalidArgument, "订单金额超过支付宝单笔限额")
+	}
 	snapshot.Order.TotalCents = &total
 	snapshot.Order.OrderMount = float32(total) / 100
 	body, err := json.Marshal(snapshot)
@@ -152,17 +163,31 @@ func prepareCreation(ctx context.Context, req *proto.OrderRequest) (model.OrderT
 }
 
 func creationResult(ctx context.Context, record model.OrderTransaction) (*proto.OrderInfoResponse, error) {
-	if record.State == model.OrderPreparing {
-		return &proto.OrderInfoResponse{OrderSn: record.OrderSn, Status: "CREATING", PayType: "demo"}, nil
+	var result *proto.OrderInfoResponse
+	if record.State == model.OrderPreparing || record.State == model.OrderCancelled {
+		payType := "demo"
+		if record.Snapshot != nil {
+			var snapshot creationSnapshot
+			if json.Unmarshal([]byte(*record.Snapshot), &snapshot) == nil && snapshot.Order.PayType != "" {
+				payType = snapshot.Order.PayType
+			}
+		}
+		state := "CREATING"
+		if record.State == model.OrderCancelled {
+			state = "CREATE_CANCELLED"
+		}
+		result = &proto.OrderInfoResponse{OrderSn: record.OrderSn, Status: state, PayType: payType}
+	} else {
+		var order model.OrderInfo
+		if err := global.DB.WithContext(ctx).Where("order_sn = ?", record.OrderSn).First(&order).Error; err != nil {
+			return nil, err
+		}
+		result = orderResponse(order)
 	}
-	if record.State == model.OrderCancelled {
-		return &proto.OrderInfoResponse{OrderSn: record.OrderSn, Status: "CREATE_CANCELLED", PayType: "demo"}, nil
+	if record.ExpiresAt != nil {
+		result.ExpiresAt = record.ExpiresAt.Unix()
 	}
-	var order model.OrderInfo
-	if err := global.DB.WithContext(ctx).Where("order_sn = ?", record.OrderSn).First(&order).Error; err != nil {
-		return nil, err
-	}
-	return orderResponse(order), nil
+	return result, nil
 }
 func orderResponse(order model.OrderInfo) *proto.OrderInfoResponse {
 	result := &proto.OrderInfoResponse{Id: order.ID, UserId: order.User, OrderSn: order.OrderSn, Status: order.Status, PayType: order.PayType, Total: order.OrderMount, Name: order.SignerName, Address: order.Address, Mobile: order.SingerMobile, Post: order.Post, AddTime: order.CreatedAt.Format(time.RFC3339)}

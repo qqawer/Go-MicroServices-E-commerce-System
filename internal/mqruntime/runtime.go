@@ -19,7 +19,7 @@ type Config struct {
 	Enabled bool   `json:"enabled"`
 	Host    string `json:"host"`
 	Port    int    `json:"port"`
-	// Creation is demo-only until payment reconciliation is implemented.
+	// Payment remains opt-in; alipay mode also requires the order payment config.
 	Mode            string `json:"mode"`
 	OrderTTLSeconds int    `json:"order_ttl_seconds"`
 }
@@ -32,8 +32,8 @@ func (c Config) Validate(order bool) error {
 	if c.Host == "" || c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("rocket host and port are required when enabled")
 	}
-	if order && (c.Mode != "demo" || c.OrderTTLSeconds < 30 || c.OrderTTLSeconds > 86400) {
-		return fmt.Errorf("rocket requires mode=demo and order_ttl_seconds between 30 and 86400")
+	if order && ((c.Mode != "demo" && c.Mode != "alipay") || c.OrderTTLSeconds < 30 || c.OrderTTLSeconds > 86400) {
+		return fmt.Errorf("rocket requires mode=demo or alipay and order_ttl_seconds between 30 and 86400")
 	}
 	return nil
 }

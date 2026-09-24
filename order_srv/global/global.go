@@ -3,6 +3,7 @@ package global
 import (
 	// model "grpctest/model/user"
 	"grpctest/order_srv/config"
+	"grpctest/order_srv/payment"
 	"grpctest/order_srv/proto"
 
 	// "log"
@@ -31,6 +32,7 @@ var (
 	MQOrder        rocketmq.Producer
 	MQInventory    rocketmq.Producer
 	MQTransactions rocketmq.TransactionProducer
+	PaymentGateway payment.Gateway
 )
 
 // func init() {

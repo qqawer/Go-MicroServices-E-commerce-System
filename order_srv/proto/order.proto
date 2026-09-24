@@ -16,6 +16,8 @@ service Order {
     rpc OrderList(OrderFilterRequest) returns (OrderListResponse); // 订单列表
     rpc OrderDetail(OrderRequest) returns (OrderInfoDetailResponse); // 订单详情,需要给出商品信息
     rpc UpdateOrderStatus(OrderStatus) returns (google.protobuf.Empty); // 修改订单状态
+    // The order service verifies the original signed Alipay form before recording payment.
+    rpc ProcessPaymentNotification(PaymentNotification) returns (google.protobuf.Empty);
 }
 
 message UserInfo {
@@ -69,6 +71,11 @@ message OrderInfoResponse {
     string mobile= 10;
     string addTime = 11;
     int64 totalCents = 12;
+    int64 expiresAt = 13; // Absolute payment deadline, Unix seconds; zero forbids payment links.
+}
+
+message PaymentNotification {
+    string body = 1; // Original application/x-www-form-urlencoded POST body, including signature.
 }
 
 message OrderFilterRequest {

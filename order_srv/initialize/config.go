@@ -123,5 +123,14 @@ func validateServerConfig(cfg *config.ServerConfig) error {
 	if cfg.ConsulInfo.Port < 1 || cfg.ConsulInfo.Port > 65535 {
 		return fmt.Errorf("order service configuration consul.port must be between 1 and 65535")
 	}
-	return cfg.MqInfo.Validate(true)
+	if err := cfg.MqInfo.Validate(true); err != nil {
+		return err
+	}
+	if err := cfg.Alipay.Validate(); err != nil {
+		return err
+	}
+	if cfg.MqInfo.Enabled && cfg.MqInfo.Mode == "alipay" && !cfg.Alipay.Enabled {
+		return fmt.Errorf("rocket mode=alipay requires enabled sandbox payment configuration")
+	}
+	return nil
 }

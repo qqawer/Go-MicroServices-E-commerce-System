@@ -16,6 +16,7 @@ import (
 	"grpctest/order_srv/global"
 	"grpctest/order_srv/handler"
 	"grpctest/order_srv/initialize"
+	"grpctest/order_srv/payment"
 	"grpctest/order_srv/proto"
 
 	"github.com/hashicorp/consul/api"
@@ -45,6 +46,11 @@ func run(ctx context.Context, ip string, port int) (err error) {
 		return fmt.Errorf("port must be between 0 and 65535")
 	}
 	if err := initialize.InitConfig(); err != nil {
+		return err
+	}
+	// Construct the shared sandbox client in the existing startup sequence.
+	global.PaymentGateway, err = payment.New(global.ServerConfig.Alipay)
+	if err != nil {
 		return err
 	}
 	closeDB, err := initialize.InitDB()

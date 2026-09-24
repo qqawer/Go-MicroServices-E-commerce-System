@@ -9,6 +9,7 @@ require (
 	github.com/hashicorp/consul/api v1.27.0
 	github.com/nacos-group/nacos-sdk-go/v2 v2.3.5
 	github.com/olivere/elastic/v7 v7.0.32
+	github.com/smartwalle/alipay/v3 v3.2.28
 	golang.org/x/crypto v0.32.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.6
@@ -81,6 +82,9 @@ require (
 	github.com/prometheus/procfs v0.7.3 // indirect
 	github.com/sagikazarmark/locafero v0.7.0 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
+	github.com/smartwalle/ncrypto v1.0.4 // indirect
+	github.com/smartwalle/ngx v1.0.12 // indirect
+	github.com/smartwalle/nsign v1.0.9 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.12.0 // indirect
 	github.com/spf13/cast v1.7.1 // indirect

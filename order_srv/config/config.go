@@ -1,6 +1,9 @@
 package config
 
-import "grpctest/internal/mqruntime"
+import (
+	"grpctest/internal/mqruntime"
+	"grpctest/order_srv/payment"
+)
 
 type MysqlConfig struct {
 	Host     string `mapstructure:"host" json:"host"`
@@ -36,6 +39,7 @@ type ServerConfig struct {
 	//库存微服务
 	InventorySerInfo GoodsSrvConfig `mapstructure:"inventory_srv" json:"inventory_srv"`
 	MqInfo           MqConfig       `mapstructure:"rocket" json:"rocket"`
+	Alipay           payment.Config `mapstructure:"alipay" json:"alipay"`
 }
 type NacosConfig struct {
 	Host      string `mapstructure:"host" json:"host"`

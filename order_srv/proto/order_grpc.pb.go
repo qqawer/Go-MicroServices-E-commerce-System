@@ -20,15 +20,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Order_CartItemList_FullMethodName      = "/Order/CartItemList"
-	Order_CreateCarItem_FullMethodName     = "/Order/CreateCarItem"
-	Order_UpdateCartItem_FullMethodName    = "/Order/UpdateCartItem"
-	Order_DeleteCartItem_FullMethodName    = "/Order/DeleteCartItem"
-	Order_CreateOrder_FullMethodName       = "/Order/CreateOrder"
-	Order_GetOrderCreation_FullMethodName  = "/Order/GetOrderCreation"
-	Order_OrderList_FullMethodName         = "/Order/OrderList"
-	Order_OrderDetail_FullMethodName       = "/Order/OrderDetail"
-	Order_UpdateOrderStatus_FullMethodName = "/Order/UpdateOrderStatus"
+	Order_CartItemList_FullMethodName               = "/Order/CartItemList"
+	Order_CreateCarItem_FullMethodName              = "/Order/CreateCarItem"
+	Order_UpdateCartItem_FullMethodName             = "/Order/UpdateCartItem"
+	Order_DeleteCartItem_FullMethodName             = "/Order/DeleteCartItem"
+	Order_CreateOrder_FullMethodName                = "/Order/CreateOrder"
+	Order_GetOrderCreation_FullMethodName           = "/Order/GetOrderCreation"
+	Order_OrderList_FullMethodName                  = "/Order/OrderList"
+	Order_OrderDetail_FullMethodName                = "/Order/OrderDetail"
+	Order_UpdateOrderStatus_FullMethodName          = "/Order/UpdateOrderStatus"
+	Order_ProcessPaymentNotification_FullMethodName = "/Order/ProcessPaymentNotification"
 )
 
 // OrderClient is the client API for Order service.
@@ -46,6 +47,8 @@ type OrderClient interface {
 	OrderList(ctx context.Context, in *OrderFilterRequest, opts ...grpc.CallOption) (*OrderListResponse, error)
 	OrderDetail(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoDetailResponse, error)
 	UpdateOrderStatus(ctx context.Context, in *OrderStatus, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// The order service verifies the original signed Alipay form before recording payment.
+	ProcessPaymentNotification(ctx context.Context, in *PaymentNotification, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type orderClient struct {
@@ -146,6 +149,16 @@ func (c *orderClient) UpdateOrderStatus(ctx context.Context, in *OrderStatus, op
 	return out, nil
 }
 
+func (c *orderClient) ProcessPaymentNotification(ctx context.Context, in *PaymentNotification, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, Order_ProcessPaymentNotification_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrderServer is the server API for Order service.
 // All implementations must embed UnimplementedOrderServer
 // for forward compatibility.
@@ -161,6 +174,8 @@ type OrderServer interface {
 	OrderList(context.Context, *OrderFilterRequest) (*OrderListResponse, error)
 	OrderDetail(context.Context, *OrderRequest) (*OrderInfoDetailResponse, error)
 	UpdateOrderStatus(context.Context, *OrderStatus) (*emptypb.Empty, error)
+	// The order service verifies the original signed Alipay form before recording payment.
+	ProcessPaymentNotification(context.Context, *PaymentNotification) (*emptypb.Empty, error)
 	mustEmbedUnimplementedOrderServer()
 }
 
@@ -197,6 +212,9 @@ func (UnimplementedOrderServer) OrderDetail(context.Context, *OrderRequest) (*Or
 }
 func (UnimplementedOrderServer) UpdateOrderStatus(context.Context, *OrderStatus) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateOrderStatus not implemented")
+}
+func (UnimplementedOrderServer) ProcessPaymentNotification(context.Context, *PaymentNotification) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProcessPaymentNotification not implemented")
 }
 func (UnimplementedOrderServer) mustEmbedUnimplementedOrderServer() {}
 func (UnimplementedOrderServer) testEmbeddedByValue()               {}
@@ -381,6 +399,24 @@ func _Order_UpdateOrderStatus_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Order_ProcessPaymentNotification_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PaymentNotification)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServer).ProcessPaymentNotification(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Order_ProcessPaymentNotification_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServer).ProcessPaymentNotification(ctx, req.(*PaymentNotification))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Order_ServiceDesc is the grpc.ServiceDesc for Order service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -423,6 +459,10 @@ var Order_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateOrderStatus",
 			Handler:    _Order_UpdateOrderStatus_Handler,
+		},
+		{
+			MethodName: "ProcessPaymentNotification",
+			Handler:    _Order_ProcessPaymentNotification_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

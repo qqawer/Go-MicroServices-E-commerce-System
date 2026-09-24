@@ -78,6 +78,21 @@ func publishOrderEvent(ctx context.Context, number, topic string) error {
 	requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	return global.DB.WithContext(requestCtx).Transaction(func(tx *gorm.DB) error {
+		if topic == "order-reback" {
+			var order model.OrderInfo
+			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("order_sn = ?", number).First(&order).Error
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			if err == nil {
+				if order.Status != "TRADE_CLOSED" {
+					return status.Error(codes.FailedPrecondition, "未关闭订单不能返库")
+				}
+				if err := ensureRefundAllowed(tx, order); err != nil {
+					return err
+				}
+			}
+		}
 		var event model.OrderEvent
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("order_sn = ? AND topic = ?", number, topic).First(&event).Error; err != nil {
 			return err
@@ -115,11 +130,19 @@ func DispatchOrderEvents(ctx context.Context, limit int) error {
 		return status.Error(codes.InvalidArgument, "无效的消息批次大小")
 	}
 	var events []model.OrderEvent
-	if err := global.DB.WithContext(ctx).Where("published = ?", false).Order("id").Limit(limit).Find(&events).Error; err != nil {
+	if err := global.DB.WithContext(ctx).Table("order_event AS e").Select("e.*").Where("e.published = ?", false).
+		Where("NOT (e.topic = ? AND (EXISTS (SELECT 1 FROM orderinfo o WHERE o.order_sn = e.order_sn AND o.status <> ?) OR EXISTS (SELECT 1 FROM order_payment p WHERE p.order_sn = e.order_sn AND (p.review = ? OR p.status IN ?))))", "order-reback", "TRADE_CLOSED", true, []string{"TRADE_SUCCESS", "TRADE_FINISHED"}).
+		Order("e.last_attempt_at, e.id").Limit(limit).Find(&events).Error; err != nil {
 		return err
 	}
 	var failures error
 	for _, event := range events {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(failures, err)
+		}
+		if err := global.DB.WithContext(ctx).Model(&model.OrderEvent{}).Where("id = ? AND published = ?", event.ID, false).UpdateColumn("last_attempt_at", time.Now()).Error; err != nil {
+			return errors.Join(failures, err)
+		}
 		if err := publishOrderEvent(ctx, event.OrderSn, event.Topic); err != nil {
 			failures = errors.Join(failures, err)
 		}
@@ -127,9 +150,10 @@ func DispatchOrderEvents(ctx context.Context, limit int) error {
 	return failures
 }
 
-// Closing state and refund intent commit atomically. A retry resumes the persisted event.
+// Demo close and refund intent commit atomically. Alipay first persists CLOSING,
+// then confirms the channel result outside the database transaction.
 func closeOrder(ctx context.Context, number string) (bool, error) {
-	refund := false
+	refund, reconcile := false, false
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var order model.OrderInfo
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("order_sn = ?", number).First(&order).Error; err != nil {
@@ -145,29 +169,49 @@ func closeOrder(ctx context.Context, number string) (bool, error) {
 			}
 			return err
 		}
-		switch order.Status {
-		case "TRADE_SUCCESS", "TRADE_FINISHED":
+		if paidStatus(order.Status) {
 			return nil
-		case "", "PAYING", "WAIT_BUYER_PAY", "TRADE_CLOSED":
+		}
+		if order.PayType != "demo" && order.PayType != "alipay" {
+			return status.Error(codes.FailedPrecondition, "订单支付方式需要人工核对")
+		}
+		if order.Status == "TRADE_CLOSED" {
+			if err := ensureRefundAllowed(tx, order); err != nil {
+				return err
+			}
+			if err := addOrderEvent(tx, number, "order-reback", 0); err != nil {
+				return err
+			}
+			refund = true
+			return nil
+		}
+		switch order.Status {
+		case "", "PAYING", "WAIT_BUYER_PAY", "CLOSING":
 		default:
 			return status.Error(codes.FailedPrecondition, "订单状态不能自动关闭")
 		}
-		if order.PayType == "demo" && order.Status != "TRADE_CLOSED" {
-			var decision model.OrderTransaction
-			if err := tx.Where("order_sn = ?", number).First(&decision).Error; err != nil {
-				return err
-			}
-			if decision.ExpiresAt == nil {
-				return errors.New("demo order has no expiry")
-			}
-			if time.Now().Before(*decision.ExpiresAt) {
-				return status.Error(codes.Unavailable, "订单尚未到期")
-			}
+		var decision model.OrderTransaction
+		if err := tx.Where("order_sn = ?", number).First(&decision).Error; err != nil {
+			return err
 		}
-		if order.Status != "TRADE_CLOSED" {
-			if err := tx.Model(&model.OrderInfo{}).Where("id = ?", order.ID).Update("status", "TRADE_CLOSED").Error; err != nil {
+		if decision.ExpiresAt == nil {
+			return errors.New("order has no expiry")
+		}
+		if time.Now().Before(*decision.ExpiresAt) {
+			return status.Error(codes.Unavailable, "订单尚未到期")
+		}
+		if order.PayType == "alipay" {
+			if err := ensureRefundAllowed(tx, order); err != nil {
 				return err
 			}
+			if err := tx.Model(&model.OrderInfo{}).Where("id = ?", order.ID).Update("status", "CLOSING").Error; err != nil {
+				return err
+			}
+			reconcile = true
+			return nil
+		}
+		if err := tx.Model(&model.OrderInfo{}).Where("id = ?", order.ID).Update("status", "TRADE_CLOSED").Error; err != nil {
+			return err
 		}
 		if err := addOrderEvent(tx, number, "order-reback", 0); err != nil {
 			return err
@@ -175,5 +219,28 @@ func closeOrder(ctx context.Context, number string) (bool, error) {
 		refund = true
 		return nil
 	})
-	return refund, err
+	if err != nil || !reconcile {
+		return refund, err
+	}
+	return settleClosingOrder(ctx, number)
+}
+
+// An exceptional payment observed after closure is an operator review item, not
+// permission to publish a new refund. Already completed inventory releases are
+// retained as facts and are never silently reversed here.
+func ensureRefundAllowed(tx *gorm.DB, order model.OrderInfo) error {
+	if paidStatus(order.Status) {
+		return status.Error(codes.FailedPrecondition, "已支付订单不能自动返库")
+	}
+	if order.PayType != "alipay" {
+		return nil
+	}
+	var count int64
+	if err := tx.Model(&model.OrderPayment{}).Where("order_sn = ? AND (review = ? OR status IN ?)", order.OrderSn, true, []string{"TRADE_SUCCESS", "TRADE_FINISHED"}).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return status.Error(codes.FailedPrecondition, "支付结果需要人工核对，暂停自动返库")
+	}
+	return nil
 }

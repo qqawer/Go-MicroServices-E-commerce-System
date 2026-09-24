@@ -26,13 +26,14 @@ func (OrderTransaction) TableName() string { return "order_transaction" }
 
 // OrderEvent is written in the same transaction as the business state change.
 type OrderEvent struct {
-	ID         int64 `gorm:"primaryKey"`
-	OrderSn    string
-	Topic      string
-	Body       string `gorm:"type:json"`
-	DelayLevel int
-	Published  bool
-	CreatedAt  time.Time
+	ID            int64 `gorm:"primaryKey"`
+	OrderSn       string
+	Topic         string
+	Body          string `gorm:"type:json"`
+	DelayLevel    int
+	Published     bool
+	CreatedAt     time.Time
+	LastAttemptAt *time.Time
 }
 
 func (OrderEvent) TableName() string { return "order_event" }

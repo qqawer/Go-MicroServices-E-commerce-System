@@ -325,6 +325,13 @@ func (O *OrderServer) OrderDetail(ctx context.Context, req *proto.OrderRequest) 
 	}
 
 	OrderInfo := *orderResponse(order)
+	var decision model.OrderTransaction
+	if err := global.DB.WithContext(ctx).Where("order_sn = ?", order.OrderSn).First(&decision).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, status.Error(codes.Unavailable, "订单付款期限暂时无法读取")
+	}
+	if decision.ExpiresAt != nil {
+		OrderInfo.ExpiresAt = decision.ExpiresAt.Unix()
+	}
 
 	OrderInfo.Id = order.ID
 	OrderInfo.UserId = order.User
@@ -373,44 +380,9 @@ func (O *OrderServer) UpdateOrderStatus(ctx context.Context, req *proto.OrderSta
 		// to the HTTP/payment caller's lifetime.
 		return &empty.Empty{}, nil
 	}
-	if req.Status != "TRADE_SUCCESS" && req.Status != "TRADE_FINISHED" && req.Status != "WAIT_BUYER_PAY" {
-		return nil, status.Error(codes.InvalidArgument, "订单状态无效")
-	}
-	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var order model.OrderInfo
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("order_sn = ?", req.OrderSn).First(&order).Error; err != nil {
-			return err
-		}
-		if order.PayType == "demo" {
-			return status.Error(codes.FailedPrecondition, "演示订单不支持付款")
-		}
-		if order.Status == req.Status {
-			return nil
-		}
-		switch order.Status {
-		case "", "PAYING", "WAIT_BUYER_PAY":
-			if req.Status != "TRADE_SUCCESS" && req.Status != "WAIT_BUYER_PAY" {
-				return status.Error(codes.FailedPrecondition, "订单状态转换无效")
-			}
-		case "TRADE_SUCCESS":
-			if req.Status != "TRADE_FINISHED" {
-				return status.Error(codes.FailedPrecondition, "已支付订单不能回退")
-			}
-		default:
-			return status.Error(codes.FailedPrecondition, "订单已结束，需要核对支付结果")
-		}
-		return tx.Model(&model.OrderInfo{}).Where("id = ?", order.ID).Update("status", req.Status).Error
-	})
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, status.Error(codes.NotFound, "订单不存在")
-		}
-		if _, ok := status.FromError(err); ok {
-			return nil, err
-		}
-		return nil, status.Error(codes.Internal, "订单状态更新失败")
-	}
-	return &empty.Empty{}, nil
+	// The legacy RPC is not a trusted payment source. Paid states are accepted
+	// exclusively through verified notifications or an authenticated channel query.
+	return nil, status.Error(codes.FailedPrecondition, "支付状态只能通过已验证的支付渠道更新")
 }
 
 func TimeOutReback(ctx context.Context, msgs ...*primitive.MessageExt) (consumer.ConsumeResult, error) {

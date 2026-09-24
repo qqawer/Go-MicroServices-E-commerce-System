@@ -95,7 +95,7 @@ func orderMessage(number string, user int32) *primitive.Message {
 		goods = append(goods, model.OrderGoods{Goods: c.Goods, GoodsName: "test", GoodsPrice: 12.5, Nums: c.Nums})
 		stock = append(stock, &proto.GoodsInventoryInfo{GoodsId: c.Goods, Num: c.Nums})
 	}
-	raw, _ := json.Marshal(map[string]interface{}{"Order": model.OrderInfo{OrderSn: number, User: user, OrderMount: 25}, "Cart": cart, "Goods": goods, "Stock": stock})
+	raw, _ := json.Marshal(map[string]interface{}{"Order": model.OrderInfo{OrderSn: number, User: user, OrderMount: 25, PayType: "demo"}, "Cart": cart, "Goods": goods, "Stock": stock})
 	snapshot := string(raw)
 	expiry := time.Now().Add(time.Hour)
 	global.DB.Create(&model.OrderTransaction{OrderSn: number, Snapshot: &snapshot, ExpiresAt: &expiry})
@@ -183,7 +183,8 @@ func TestOrderLostCommitReplyDoesNotRefundCommittedOrder(t *testing.T) {
 }
 func TestTimeoutRefundPublishesOnlyAfterBusinessCommit(t *testing.T) {
 	db, _, producer := transactionSetup(t)
-	db.Create(&model.OrderInfo{OrderSn: "tx-close-rollback", User: 900004, Status: "WAIT_BUYER_PAY"})
+	db.Create(&model.OrderInfo{OrderSn: "tx-close-rollback", User: 900004, Status: "WAIT_BUYER_PAY", PayType: "demo"})
+	expiredDecision(t, db, "tx-close-rollback")
 	testdb.FailCommit(t, db, 1, false)
 	result, err := handler.TimeOutReback(context.Background(), timeoutMessage("tx-close-rollback"))
 	if result != consumer.ConsumeRetryLater || err != nil {
@@ -199,7 +200,8 @@ func TestTimeoutRefundPublishesOnlyAfterBusinessCommit(t *testing.T) {
 }
 func TestPendingRefundSurvivesSendFailureAndNewDispatcher(t *testing.T) {
 	db, _, producer := transactionSetup(t)
-	db.Create(&model.OrderInfo{OrderSn: "tx-outbox-retry", User: 900005, Status: "WAIT_BUYER_PAY"})
+	db.Create(&model.OrderInfo{OrderSn: "tx-outbox-retry", User: 900005, Status: "WAIT_BUYER_PAY", PayType: "demo"})
+	expiredDecision(t, db, "tx-outbox-retry")
 	producer.fail = true
 	result, _ := handler.TimeOutReback(context.Background(), timeoutMessage("tx-outbox-retry"))
 	if result != consumer.ConsumeRetryLater {
@@ -239,7 +241,8 @@ func TestTimeoutBatchSkipsPaidAndClosesBothUnpaidOrders(t *testing.T) {
 		if number == "tx-batch-paid" {
 			state = "TRADE_SUCCESS"
 		}
-		db.Create(&model.OrderInfo{OrderSn: number, User: 900006, Status: state})
+		db.Create(&model.OrderInfo{OrderSn: number, User: 900006, Status: state, PayType: "demo"})
+		expiredDecision(t, db, number)
 	}
 	msgs := []*primitive.MessageExt{timeoutMessage("tx-batch-paid"), timeoutMessage("tx-batch-a"), timeoutMessage("tx-batch-b")}
 	for n := 0; n < 2; n++ {
@@ -264,7 +267,8 @@ func TestOrderQueryErrorKeepsMessageUnknown(t *testing.T) {
 
 func TestTimeoutLostCommitReplyRetriesPersistedRefund(t *testing.T) {
 	db, _, producer := transactionSetup(t)
-	db.Create(&model.OrderInfo{OrderSn: "tx-close-commit-lost", User: 900007, Status: "WAIT_BUYER_PAY"})
+	db.Create(&model.OrderInfo{OrderSn: "tx-close-commit-lost", User: 900007, Status: "WAIT_BUYER_PAY", PayType: "demo"})
+	expiredDecision(t, db, "tx-close-commit-lost")
 	testdb.FailCommit(t, db, 1, true)
 	if result, _ := handler.TimeOutReback(context.Background(), timeoutMessage("tx-close-commit-lost")); result != consumer.ConsumeRetryLater {
 		t.Fatal(result)
@@ -282,4 +286,12 @@ func TestTimeoutLostCommitReplyRetriesPersistedRefund(t *testing.T) {
 
 func (f *transactionStock) Reback(context.Context, *proto.SellInfo, ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
+}
+
+func expiredDecision(t *testing.T, db *gorm.DB, number string) {
+	t.Helper()
+	expired := time.Now().Add(-time.Minute)
+	if err := db.Create(&model.OrderTransaction{OrderSn: number, State: model.OrderCommitted, ExpiresAt: &expired}).Error; err != nil {
+		t.Fatal(err)
+	}
 }

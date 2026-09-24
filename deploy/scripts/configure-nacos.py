@@ -35,7 +35,8 @@ def main():
                   'mysql': {'host': 'mysql', 'port': '3306', 'name': db, 'user': 'grpctest', 'password': settings['MYSQL_APP_PASSWORD']},
                   'consul': {'host': 'consul', 'port': 8500}}
         if domain == 'order':
-            config.update(goods_srv={'name': 'goods-srv'}, inventory_srv={'name': 'inventory-srv'})
+            config.update(goods_srv={'name': 'goods-srv'}, inventory_srv={'name': 'inventory-srv'},
+                          alipay={'enabled': False, **{key: '' for key in ('appid', 'seller_id', 'private_key', 'alipaypublic_key')}})
         entries.append((domain, name + '.json', config))
     for domain, port in [('user', 8021), ('goods', 8022), ('order', 8023)]:
         config = {'name': domain + '-web', 'host': domain + '-web', 'port': port, 'mode': 'release',
@@ -51,7 +52,7 @@ def main():
             config['goods_srv'] = {'name': 'goods-srv'}
         if domain == 'order':
             config.update(order_srv={'name': 'orders-srv'}, inventory_srv={'name': 'inventory-srv'},
-                          alipay={key: '' for key in ('appid', 'private_key', 'alipaypublic_key', 'notice_url', 'return_url')})
+                          alipay={'enabled': False, **{key: '' for key in ('appid', 'private_key', 'alipaypublic_key', 'notice_url', 'return_url')}})
         entries.append((domain, domain + '-web.json', config))
     for _, data_id, config in entries:
         target = folder / data_id

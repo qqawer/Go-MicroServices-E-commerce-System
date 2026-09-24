@@ -459,6 +459,14 @@ github.com/sirupsen/logrus v1.6.0 h1:UBcNElsrwanuuMsnGSlYmtmgbb23qDR5dG+6X6Oo89I
 github.com/sirupsen/logrus v1.6.0/go.mod h1:7uNnSEd1DgxDLC74fIahvMZmmYsHGZGEOFrfsX/uA88=
 github.com/sirupsen/logrus v1.9.0 h1:trlNQbNUG3OdDrDil03MCb1H2o9nJ1x4/5LYw7byDE0=
 github.com/sirupsen/logrus v1.9.0/go.mod h1:naHLuLoDiP4jHNo9R0sCBMtWGeIprob74mVsIT4qYEQ=
+github.com/smartwalle/alipay/v3 v3.2.28 h1:pANvguTjmFtfTw3le44qjQHYDrRcjCy8r8YUonFeblE=
+github.com/smartwalle/alipay/v3 v3.2.28/go.mod h1:dwPyjY5y17qUsDrsVYCQqmDBtQ/qpvY8JmQMvuJYGLQ=
+github.com/smartwalle/ncrypto v1.0.4 h1:P2rqQxDepJwgeO5ShoC+wGcK2wNJDmcdBOWAksuIgx8=
+github.com/smartwalle/ncrypto v1.0.4/go.mod h1:Dwlp6sfeNaPMnOxMNayMTacvC5JGEVln3CVdiVDgbBk=
+github.com/smartwalle/ngx v1.0.12 h1:jcoCyu/0HtQ1y/gbiSLzqOUZcHnVLlKOmm0awRF7Mcg=
+github.com/smartwalle/ngx v1.0.12/go.mod h1:mx/nz2Pk5j+RBs7t6u6k22MPiBG/8CtOMpCnALIG8Y0=
+github.com/smartwalle/nsign v1.0.9 h1:8poAgG7zBd8HkZy9RQDwasC6XZvJpDGQWSjzL2FZL6E=
+github.com/smartwalle/nsign v1.0.9/go.mod h1:eY6I4CJlyNdVMP+t6z1H6Jpd4m5/V+8xi44ufSTxXgc=
 github.com/smartystreets/assertions v0.0.0-20180927180507-b2de0cb4f26d/go.mod h1:OnSkiWE9lh6wB0YB77sQom3nweQdgAjqCqsofrRNTgc=
 github.com/smartystreets/assertions v1.1.0/go.mod h1:tcbTF8ujkAEcZ8TElKY+i30BzYlVhC/LOxJk7iOWnoo=
 github.com/smartystreets/goconvey v1.6.4/go.mod h1:syvi0/a8iFYH4r/RixwvyeAJjdLS9QV7WQ/tjFTllLA=
