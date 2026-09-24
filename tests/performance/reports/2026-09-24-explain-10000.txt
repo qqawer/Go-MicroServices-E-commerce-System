@@ -1,0 +1,33 @@
+list_count
+SELECT count(*) FROM goods WHERE deleted_at IS NULL
+-> Aggregate: count(0)  (cost=1140 rows=1) (actual time=2.12..2.12 rows=1 loops=1)
+    -> Filter: (goods.deleted_at is null)  (cost=1042 rows=986) (actual time=0.0976..1.86 rows=10000 loops=1)
+        -> Table scan on goods  (cost=1042 rows=9856) (actual time=0.0967..1.43 rows=10000 loops=1)
+
+
+list_page
+SELECT * FROM goods WHERE deleted_at IS NULL LIMIT 20
+-> Limit: 20 row(s)  (cost=1042 rows=20) (actual time=0.0255..0.0358 rows=20 loops=1)
+    -> Filter: (goods.deleted_at is null)  (cost=1042 rows=986) (actual time=0.0253..0.0347 rows=20 loops=1)
+        -> Table scan on goods  (cost=1042 rows=9856) (actual time=0.0244..0.0333 rows=20 loops=1)
+
+
+filtered_count
+SELECT count(*) FROM goods WHERE brands_id=1 AND shop_price>=100 AND shop_price<=1000 AND deleted_at IS NULL
+-> Aggregate: count(0)  (cost=118 rows=1) (actual time=0.345..0.345 rows=1 loops=1)
+    -> Filter: ((goods.shop_price >= 100) and (goods.shop_price <= 1000) and (goods.deleted_at is null))  (cost=118 rows=5.2) (actual time=0.0785..0.338 rows=197 loops=1)
+        -> Index lookup on goods using goods2_brands_id (brands_id=1)  (cost=118 rows=468) (actual time=0.0768..0.31 rows=468 loops=1)
+
+
+filtered_page
+SELECT * FROM goods WHERE brands_id=1 AND shop_price>=100 AND shop_price<=1000 AND deleted_at IS NULL LIMIT 20
+-> Limit: 20 row(s)  (cost=118 rows=5.2) (actual time=0.018..0.0705 rows=20 loops=1)
+    -> Filter: ((goods.shop_price >= 100) and (goods.shop_price <= 1000) and (goods.deleted_at is null))  (cost=118 rows=5.2) (actual time=0.0177..0.0693 rows=20 loops=1)
+        -> Index lookup on goods using goods2_brands_id (brands_id=1)  (cost=118 rows=468) (actual time=0.0162..0.0643 rows=49 loops=1)
+
+
+price_count
+SELECT count(*) FROM goods WHERE shop_price>=100 AND shop_price<=1000 AND deleted_at IS NULL
+-> Aggregate: count(0)  (cost=1053 rows=1) (actual time=2.27..2.27 rows=1 loops=1)
+    -> Filter: ((goods.shop_price >= 100) and (goods.shop_price <= 1000) and (goods.deleted_at is null))  (cost=1042 rows=109) (actual time=0.045..2.13 rows=4415 loops=1)
+        -> Table scan on goods  (cost=1042 rows=9856) (actual time=0.0427..1.51 rows=10000 loops=1)
