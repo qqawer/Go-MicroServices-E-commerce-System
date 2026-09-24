@@ -1,5 +1,14 @@
 # AWS 部署记录 · 2026-09-17 RPC 首次发布与 Mac 联调
 
+## 2026-09-24 支付代码与云端 Web 发布
+
+- RPC `fc64b6a`、Web `fca45be` 已经 Actions → Jenkins 发布；[RPC CI/CD](https://github.com/qqawer/grpctest/actions/runs/35944645337)、[Web CI/CD](https://github.com/qqawer/grpctest_web/actions/runs/35944731730) 成功，最终 Web Jenkins #13 SUCCESS。实际四 RPC/三 Web 的镜像 revision 已核对，七个应用容器 healthy；四 RPC 在 Consul passing，Web 仅使用服务发现、不向 Consul 注册。
+- 新增独立 Web 部署 runner、仓库加密 Jenkins Secret 和 main-only `aws` 环境，Web 的 `ENABLE_DEPLOY=true`。构建仍在托管 runner，服务器 runner 只负责触发 Jenkins；临时 GHCR 配置已清理。
+- 0005 支付迁移已应用，版本 1–5 dirty=0；备份 `runtime/state/before-migration-20260924T014921Z.sql`。原有库存、订单、库存操作指纹不变，支付表仍空，没有创建渠道交易。
+- 沙箱凭据已配置；AWS 使用当前应用发起只读查单，得到预期“订单不存在”。此检查不代替真实成功付款、通知验签或商户金额核验。
+- Nginx 绑定公网 80，仅代理 POST `/g/v1/pay/alipay/notify` 到 order-web；其他路径404、GET405、超限413。三个 Web 的宿主机8021–8023均仅绑定127.0.0.1。服务器内通知POST经代理返回预期503（支付关闭）；Mac公网80仍超时，AWS控制台未登录，尚未改安全组 `sg-01a6adef2222761c1`。
+- Nacos local/dev 的 notice_url 已填 `http://98.83.120.128/g/v1/pay/alipay/notify`，return_url 留空；两端 enabled:false、rocket.mode=demo。公网连通后再启用并测试新订单。具体操作见 [通知入口说明](PAYMENT_CALLBACK.md)。
+
 ## 2026-09-21 自动部署配置更新
 
 现有 AWS 新增仅用于 RPC 发布的 GitHub runner，Jenkins 沿用原任务和权限，增加临时 GHCR 认证。配置与核对方式见 [AUTO_CD.md](AUTO_CD.md)。四个 RPC 发布版本以 Actions 对应运行、Jenkins 构建结果和 `runtime/state/rpc-<提交>.json` 为准。Web 继续在 Mac 运行；以下为 9 月 17–19 日的历史部署快照。
