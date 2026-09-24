@@ -1,5 +1,11 @@
 # AWS 部署记录 · 2026-09-17 RPC 首次发布与 Mac 联调
 
+## 2026-09-24 公网通知连通与沙箱启用
+
+用户在 AWS 增加 HTTP/TCP 80 来源 `0.0.0.0/0` 后，已从 Mac 直连验证入口可达。Nacos `orders-srv.json / dev`、`order-web.json / local,dev` 的 `alipay.enabled` 已改为 true，订单 RPC `rocket.mode=alipay`；配置私有备份 `runtime/state/before-enable-alipay-20260924T062825Z`。仅重启云端 order-srv/order-web，实际代码镜像未变；七个应用健康、Consul RPC passing。公网无签名通知返回400 failure，普通路径404、回调GET405；支付表、订单表、库存操作表均仍0条，没有创建或支付测试订单。本机order-web需要使用者重启；下一步创建新订单并完成真实沙箱付款/成功通知验收。
+
+以下为同日启用前的部署过程记录。
+
 ## 2026-09-24 支付代码与云端 Web 发布
 
 - RPC `fc64b6a`、Web `fca45be` 已经 Actions → Jenkins 发布；[RPC CI/CD](https://github.com/qqawer/grpctest/actions/runs/35944645337)、[Web CI/CD](https://github.com/qqawer/grpctest_web/actions/runs/35944731730) 成功，最终 Web Jenkins #13 SUCCESS。实际四 RPC/三 Web 的镜像 revision 已核对，七个应用容器 healthy；四 RPC 在 Consul passing，Web 仅使用服务发现、不向 Consul 注册。

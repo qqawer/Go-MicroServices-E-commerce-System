@@ -1,6 +1,6 @@
 # 订单支付与安全关闭
 
-2026-09-24，第 06 批已部署：RPC `fc64b6a`、Web `fca45be`，迁移 0005 已备份应用，现有 AWS 继续 `rocket.mode=demo`、支付宝关闭。Nacos `orders-srv.json / dev` 已配置同套沙箱应用及收款商户 ID；从 AWS 只读查不存在的沙箱订单得到预期结果，未创建交易。Nginx → order-web 通知路径在服务器内验证通过，但公网 80 连接仍超时，待核对安全组后再启用、验收真实付款及通知。
+2026-09-24，第 06 批已部署：RPC `fc64b6a`、Web `fca45be`，迁移 0005 已备份应用。用户放行 HTTP/TCP 80 后公网通知已连通，Nacos 三份支付配置已 enabled=true，订单 RPC 的 rocket.mode=alipay；云端订单 RPC/Web 已重启。AWS 沙箱只读查单得到预期结果，公网无签名通知返回400 failure，未创建交易。真实沙箱付款与成功通知入账仍待验收；旧 demo 订单保持原语义。
 
 ## 调用与数据
 
@@ -40,7 +40,7 @@ namespace `ce4b3f78-1db4-4418-9cb9-a3e1bd406c88`，Data ID **`orders-srv.json`**
 
 `seller_id` 是自己的沙箱收款商户 ID。启用后检查配置及 RSA 密钥格式，SDK 固定沙箱模式；客户端在原有启动流程里构造并复用，没有第二套服务入口。查询/关单请求时间使用 UTC+8，避免 AWS UTC 环境产生错误 timestamp。
 
-Web 的 `order-web.json` 还保留支付链接所需配置；AppID、应用私钥、支付宝公钥应与 RPC 一致。沙箱准备完成后才同时启用两端并把 `rocket.mode` 改为 `alipay`，当前不切换。仅开启开关不代表沙箱已联调成功。
+Web 的 `order-web.json` 还保留支付链接所需配置；AppID、应用私钥、支付宝公钥应与 RPC 一致。当前已同时启用两端并把 `rocket.mode` 改为 `alipay`，本机 Web 需重启读取配置。仅开启开关不代表沙箱付款全链路已联调成功。
 
 ## 检查及部署边界
 

@@ -7,7 +7,7 @@
        → order-web:8023 → orders-srv → 验签/金额商户校验/数据库事务
 ```
 
-当前通知地址已配置为 `http://98.83.120.128/g/v1/pay/alipay/notify`，`return_url` 可空。2026-09-24 已部署 Nginx、RPC 和三个 Web；服务器内通知 POST 返回预期 503（支付关闭），Mac 公网访问 80 仍超时，需核对实例 `i-06a10bd902160fade` 的安全组 `sg-01a6adef2222761c1`。现阶段是学习用沙箱 HTTP 入口；域名/TLS 后续另行配置。不要用 RPC 的 50054 或 Mac localhost 作为通知地址。
+当前通知地址为 `http://98.83.120.128/g/v1/pay/alipay/notify`，`return_url` 留空。2026-09-24 用户增加 HTTP/TCP80 来源0.0.0.0/0后，Mac公网请求已成功到达通知接口。两端支付已启用、订单模式alipay，云端订单RPC/Web已重启；无签名POST返回400 failure、GET405、其他路径404。真实付款验收仍待完成。现阶段是学习用沙箱 HTTP 入口；域名/TLS 后续另行配置。不要用 RPC 的50054或Mac localhost作为通知地址。
 
 ## 启动
 
