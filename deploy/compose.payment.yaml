@@ -1,0 +1,27 @@
+name: grpctest-payment
+services:
+  callback:
+    # Official nginx 1.30.5-alpine, pinned to the reviewed image index.
+    image: nginx:stable-alpine@sha256:985220252f3863977e468f611ef118ebd01421289dd86ee1ae99cb068c3bce2b
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    volumes:
+      - ./nginx/payment.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${PAYMENT_BIND_ADDRESS:-127.0.0.1}:${PAYMENT_HTTP_PORT:-80}:8080"
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "3", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+networks:
+  backend:
+    name: grpctest-backend
+    external: true

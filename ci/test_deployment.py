@@ -12,6 +12,7 @@ import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import parse_qs
 
@@ -19,9 +20,59 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('trigger', ROOT / 'ci/trigger_jenkins.py')
 trigger = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(trigger)
+runner_spec = importlib.util.spec_from_file_location('install_runner', ROOT / 'deploy/scripts/install-deploy-runner.py')
+install_runner = importlib.util.module_from_spec(runner_spec)
+runner_spec.loader.exec_module(install_runner)
 
 
 class DeploymentTests(unittest.TestCase):
+    def test_deployment_runner_registration_keeps_repositories_isolated(self):
+        for arguments, group, user, repository, name, label in (
+                ([], 'rpc', 'actionsrunner', 'https://github.com/qqawer/grpctest', 'aws-grpctest-deploy', 'grpctest-deploy'),
+                (['web'], 'web', 'actionsrunnerweb', 'https://github.com/qqawer/grpctest_web', 'aws-grpctest-web-deploy', 'grpctest-web-deploy')):
+            with self.subTest(group=group), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / 'config.sh').touch()  # A verified runner download is already present.
+                target = install_runner.TARGETS[group]
+                account = SimpleNamespace(pw_dir=str(root), pw_uid=1001, pw_gid=1001)
+                output = io.StringIO()
+                with patch.dict(install_runner.TARGETS, {group: (root, *target[1:])}), \
+                        patch.object(sys, 'argv', ['install-runner', *arguments]), \
+                        patch.object(sys, 'stdin', io.StringIO('registration-test-only\n')), \
+                        patch.object(install_runner.os, 'geteuid', return_value=0), \
+                        patch.object(install_runner.os, 'chown'), \
+                        patch.object(install_runner.pwd, 'getpwnam', return_value=account) as get_account, \
+                        patch.object(install_runner.subprocess, 'run') as run, \
+                        contextlib.redirect_stdout(output):
+                    install_runner.main()
+                get_account.assert_called_once_with(user)
+                self.assertEqual(run.call_args_list[0].args[0],
+                                 ['runuser', '-u', user, '--', './config.sh', '--unattended',
+                                  '--url', repository, '--name', name, '--labels', label, '--work', '_work'])
+                self.assertEqual(run.call_args_list[0].kwargs['cwd'], root)
+                self.assertEqual(run.call_args_list[0].kwargs['env']['ACTIONS_RUNNER_INPUT_TOKEN'], 'registration-test-only')
+                self.assertEqual(run.call_args_list[1].args[0], ['./svc.sh', 'install', user])
+                self.assertEqual(run.call_args_list[2].args[0], ['./svc.sh', 'start'])
+                self.assertNotIn('registration-test-only', output.getvalue())
+                for call in run.call_args_list:
+                    self.assertNotIn('registration-test-only', ' '.join(call.args[0]))
+
+    def test_deployment_runner_refuses_existing_registration_for_another_repository(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / '.runner').write_text(json.dumps({'gitHubUrl': 'https://github.com/qqawer/grpctest'}))
+            target = install_runner.TARGETS['web']
+            account = SimpleNamespace(pw_dir=str(root), pw_uid=1001, pw_gid=1001)
+            with patch.dict(install_runner.TARGETS, {'web': (root, *target[1:])}), \
+                    patch.object(sys, 'argv', ['install-runner', 'web']), \
+                    patch.object(install_runner.os, 'geteuid', return_value=0), \
+                    patch.object(install_runner.os, 'chown'), \
+                    patch.object(install_runner.pwd, 'getpwnam', return_value=account), \
+                    patch.object(install_runner.subprocess, 'run') as run:
+                with self.assertRaisesRegex(ValueError, 'different repository'):
+                    install_runner.main()
+                run.assert_not_called()
+
     def test_jenkins_success_and_failure_are_propagated(self):
         for result in ('SUCCESS', 'FAILURE'):
             with self.subTest(result=result), tempfile.TemporaryDirectory() as directory:
