@@ -16,7 +16,7 @@ from env import DATABASES, Environment, ROOT, execute
 
 MIGRATIONS = sorted((ROOT / 'deploy/mysql/migrations').glob('*.sql'))
 MIGRATION_COUNT = len(MIGRATIONS)
-BUSINESS_TABLE_COUNT = 17
+BUSINESS_TABLE_COUNT = 18
 
 
 def rejected(result, message):

@@ -30,6 +30,12 @@ func main() {
 	initialize.InitLogger()
 	initialize.InitConfig()
 	initialize.InitDB()
+	goodsClient, closeGoods, goodsErr := initialize.InitGoodsConn()
+	if goodsErr != nil {
+		zap.S().Warnf("收藏商品查询连接不可用: %v", goodsErr)
+	} else {
+		defer closeGoods()
+	}
 
 
 
@@ -47,8 +53,10 @@ func main() {
 	}
 	
 	server := grpc.NewServer()
+	defer server.Stop()
 	proto.RegisterUserServer(server,&handler.UserServer{})
 	proto.RegisterAddressBookServer(server, &handler.AddressServer{})
+	proto.RegisterFavoritesServer(server, &handler.FavoritesServer{Goods: goodsClient})
 	// lis,err:=net.Listen("tcp", "0.0.0.0:8088")
 	lis,err:=net.Listen("tcp",fmt.Sprintf("%s:%d",*IP,*Port))
 	if err!=nil{

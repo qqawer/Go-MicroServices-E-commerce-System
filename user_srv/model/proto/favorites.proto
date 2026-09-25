@@ -1,0 +1,49 @@
+syntax = "proto3";
+package mxshop.favorites.v1;
+import "google/protobuf/empty.proto";
+option go_package = ".;proto";
+
+service Favorites {
+  rpc ListFavorites(FavoriteListRequest) returns (FavoriteListResponse);
+  rpc AddFavorite(FavoriteKey) returns (FavoriteState);
+  rpc RemoveFavorite(FavoriteKey) returns (google.protobuf.Empty);
+  rpc GetFavoriteStatus(FavoriteKey) returns (FavoriteState);
+}
+
+message FavoriteKey {
+  int32 user_id = 1;
+  int32 goods_id = 2;
+}
+
+message FavoriteState {
+  int32 user_id = 1;
+  int32 goods_id = 2;
+  bool favorited = 3;
+}
+
+message FavoriteListRequest {
+  int32 user_id = 1;
+  int32 pn = 2;
+  int32 psize = 3;
+}
+
+message FavoriteGoods {
+  int32 id = 1;
+  string name = 2;
+  float shop_price = 3;
+  string goods_front_image = 4;
+  bool on_sale = 5;
+}
+
+message Favorite {
+  int32 user_id = 1;
+  int32 goods_id = 2;
+  int64 created_at = 3;
+  FavoriteGoods goods = 4;
+  bool goods_missing = 5;
+}
+
+message FavoriteListResponse {
+  int32 total = 1;
+  repeated Favorite data = 2;
+}

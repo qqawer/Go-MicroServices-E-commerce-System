@@ -122,11 +122,27 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 
 // BatchGetGoods 查询多个商品信息
 func (s *GoodsServer) BatchGetGoods(ctx context.Context, req *proto.BatchGoodsIdInfo) (*proto.GoodsListResponse, error) {
-	goodsListResponse := &proto.GoodsListResponse{}
+	if req == nil || len(req.Id) > 1000 {
+		return nil, status.Error(codes.InvalidArgument, "一次最多查询 1000 个商品")
+	}
+	for _, id := range req.Id {
+		if id <= 0 {
+			return nil, status.Error(codes.InvalidArgument, "商品 ID 无效")
+		}
+	}
+	goodsListResponse := &proto.GoodsListResponse{Data: make([]*proto.GoodsInfoResponse, 0)}
+	// GORM's Where(emptySlice) removes the predicate and would return all goods.
+	if len(req.Id) == 0 {
+		return goodsListResponse, nil
+	}
 	var goods []model.Goods
-
-	//调用where并不会真正执行sql 只是用来生成sql的 当调用find， first才会去执行sql，
-	result := global.DB.Where(req.Id).Find(&goods)
+	result := global.DB.WithContext(ctx).Where("id IN ?", req.Id).Find(&goods)
+	if result.Error != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		return nil, status.Error(codes.Internal, "批量查询商品失败")
+	}
 	for _, good := range goods {
 		goodsInfoResponse := ModelToResponse(good)
 		goodsListResponse.Data = append(goodsListResponse.Data, &goodsInfoResponse)
