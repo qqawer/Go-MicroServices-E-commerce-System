@@ -1,0 +1,39 @@
+syntax = "proto3";
+package mxshop.messages.v1;
+import "google/protobuf/empty.proto";
+option go_package = ".;proto";
+
+// Hosted by user-srv. Web supplies the authenticated user's identity.
+service Messages {
+  rpc ListMessages(MessageListRequest) returns (MessageListResponse);
+  rpc GetMessage(MessageLookup) returns (UserMessage);
+  rpc CreateMessage(CreateMessageRequest) returns (UserMessage);
+  rpc DeleteMessage(MessageLookup) returns (google.protobuf.Empty);
+}
+message UserMessage {
+  int32 id = 1;
+  int32 user_id = 2;
+  int32 message_type = 3;
+  string subject = 4;
+  string message = 5;
+  int64 created_at = 6; // Unix seconds in UTC.
+}
+message MessageLookup {
+  int32 user_id = 1;
+  int32 id = 2;
+}
+message MessageListRequest {
+  int32 user_id = 1;
+  int32 pn = 2;
+  int32 psize = 3;
+}
+message MessageListResponse {
+  int32 total = 1;
+  repeated UserMessage data = 2;
+}
+message CreateMessageRequest {
+  int32 user_id = 1;
+  int32 message_type = 2; // 1 message, 2 complaint, 3 inquiry, 4 after-sales, 5 wanted.
+  string subject = 3;
+  string message = 4;
+}
