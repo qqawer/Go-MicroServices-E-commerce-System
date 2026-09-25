@@ -8,6 +8,7 @@ service User{
     rpc GetUserById(IdRequest)returns (UserInfoResponse); //通过id查询用户
     rpc CreateUser(CreateUserInfo) returns (UserInfoResponse);//添加用户
     rpc Updateuser(UpdateUserInfo) returns (google.protobuf.Empty);//更新用户
+    rpc PatchUser(PatchUserInfo) returns (google.protobuf.Empty);//仅修改明确提交的个人资料字段
     rpc CheckPassWord(PasswordCheckInfo) returns (CheckResponse);//检查密码
 }
 message PasswordCheckInfo{
@@ -35,18 +36,25 @@ message CreateUserInfo{
 
 message UpdateUserInfo{
     int32 id=1;
-    string nickName=2;
-    string gender=3;
-    uint64 birthDay=4;
+    optional string nickName=2;
+    optional string gender=3;
+    optional uint64 birthDay=4;
+}
+message PatchUserInfo{
+    int32 id=1;
+    optional string nickName=2;
+    optional string gender=3;
+    optional string birthdayDate=4; // YYYY-MM-DD；缺省不修改，空字符串清空。
 }
 message UserInfoResponse{
     int32 id=1;
     string password=2;
     string mobile=3;
     string nickName=4;
-    uint64 birthday=5;
+    optional uint64 birthday=5; // 未填写生日时省略，显式 0 仍表示有效时间戳。
     string gender=6;
     int32 role=7;
+    optional string birthdayDate=8; // 按数据库中的日历日期返回，不做跨时区转换。
 }
 message UserListResponse{
     int32 total=1;
