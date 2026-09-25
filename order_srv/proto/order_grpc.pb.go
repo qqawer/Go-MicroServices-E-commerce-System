@@ -25,6 +25,7 @@ const (
 	Order_UpdateCartItem_FullMethodName             = "/Order/UpdateCartItem"
 	Order_DeleteCartItem_FullMethodName             = "/Order/DeleteCartItem"
 	Order_CreateOrder_FullMethodName                = "/Order/CreateOrder"
+	Order_CreateOrderFromAddress_FullMethodName     = "/Order/CreateOrderFromAddress"
 	Order_GetOrderCreation_FullMethodName           = "/Order/GetOrderCreation"
 	Order_OrderList_FullMethodName                  = "/Order/OrderList"
 	Order_OrderDetail_FullMethodName                = "/Order/OrderDetail"
@@ -43,6 +44,8 @@ type OrderClient interface {
 	DeleteCartItem(ctx context.Context, in *CartItemRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// 订单
 	CreateOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error)
+	// Separate method prevents an older server from silently ignoring addressId.
+	CreateOrderFromAddress(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error)
 	GetOrderCreation(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error)
 	OrderList(ctx context.Context, in *OrderFilterRequest, opts ...grpc.CallOption) (*OrderListResponse, error)
 	OrderDetail(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoDetailResponse, error)
@@ -103,6 +106,16 @@ func (c *orderClient) CreateOrder(ctx context.Context, in *OrderRequest, opts ..
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(OrderInfoResponse)
 	err := c.cc.Invoke(ctx, Order_CreateOrder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orderClient) CreateOrderFromAddress(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OrderInfoResponse)
+	err := c.cc.Invoke(ctx, Order_CreateOrderFromAddress_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +183,8 @@ type OrderServer interface {
 	DeleteCartItem(context.Context, *CartItemRequest) (*emptypb.Empty, error)
 	// 订单
 	CreateOrder(context.Context, *OrderRequest) (*OrderInfoResponse, error)
+	// Separate method prevents an older server from silently ignoring addressId.
+	CreateOrderFromAddress(context.Context, *OrderRequest) (*OrderInfoResponse, error)
 	GetOrderCreation(context.Context, *OrderRequest) (*OrderInfoResponse, error)
 	OrderList(context.Context, *OrderFilterRequest) (*OrderListResponse, error)
 	OrderDetail(context.Context, *OrderRequest) (*OrderInfoDetailResponse, error)
@@ -200,6 +215,9 @@ func (UnimplementedOrderServer) DeleteCartItem(context.Context, *CartItemRequest
 }
 func (UnimplementedOrderServer) CreateOrder(context.Context, *OrderRequest) (*OrderInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateOrder not implemented")
+}
+func (UnimplementedOrderServer) CreateOrderFromAddress(context.Context, *OrderRequest) (*OrderInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateOrderFromAddress not implemented")
 }
 func (UnimplementedOrderServer) GetOrderCreation(context.Context, *OrderRequest) (*OrderInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetOrderCreation not implemented")
@@ -327,6 +345,24 @@ func _Order_CreateOrder_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Order_CreateOrderFromAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OrderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServer).CreateOrderFromAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Order_CreateOrderFromAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServer).CreateOrderFromAddress(ctx, req.(*OrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Order_GetOrderCreation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(OrderRequest)
 	if err := dec(in); err != nil {
@@ -443,6 +479,10 @@ var Order_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateOrder",
 			Handler:    _Order_CreateOrder_Handler,
+		},
+		{
+			MethodName: "CreateOrderFromAddress",
+			Handler:    _Order_CreateOrderFromAddress_Handler,
 		},
 		{
 			MethodName: "GetOrderCreation",

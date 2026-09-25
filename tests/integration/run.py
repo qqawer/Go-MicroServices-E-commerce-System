@@ -14,6 +14,10 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from env import DATABASES, Environment, ROOT, execute
 
+MIGRATIONS = sorted((ROOT / 'deploy/mysql/migrations').glob('*.sql'))
+MIGRATION_COUNT = len(MIGRATIONS)
+BUSINESS_TABLE_COUNT = 17
+
 
 def rejected(result, message):
     assert result.returncode != 0, f'command should reject {message}'
@@ -86,7 +90,7 @@ def legacy_upgrade():
         print(execute(command + ['check'] + options).stdout.strip(), flush=True)
         print(execute(command + ['up'] + options).stdout.strip(), flush=True)
         execute(command + ['up'] + options)
-        assert env.sql('SELECT stocks FROM grpctest_inventory_srv.inventory WHERE goods=421; SELECT COUNT(*) FROM grpctest_migrations.schema_migrations WHERE dirty=0;') == '17\n5'
+        assert env.sql('SELECT stocks FROM grpctest_inventory_srv.inventory WHERE goods=421; SELECT COUNT(*) FROM grpctest_migrations.schema_migrations WHERE dirty=0;') == f'17\n{MIGRATION_COUNT}'
         assert env.sql("SELECT status FROM grpctest_inventory_srv.stockselldetail WHERE order_sn='legacy-order'; SELECT state FROM grpctest_orders_srv.order_transaction WHERE order_sn='legacy-order';") == '1\n1'
         backups=list((env.directory / 'migration-state').glob('before-migration-*.sql'))
         assert len(backups)==1 and backups[0].stat().st_size>0
@@ -119,8 +123,8 @@ def main():
         env.dbtool('up')
         rows = env.sql("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (" +
                        ','.join("'" + db + "'" for db in DATABASES) + ');')
-        assert rows == '16', f'current schema must create 16 business tables; got {rows}'
-        print('PASS: empty environment applies baseline + inventory/order/payment migrations (16 tables)', flush=True)
+        assert rows == str(BUSINESS_TABLE_COUNT), f'current schema must create {BUSINESS_TABLE_COUNT} business tables; got {rows}'
+        print(f'PASS: empty environment applies all {MIGRATION_COUNT} migrations ({BUSINESS_TABLE_COUNT} business tables)', flush=True)
         with tempfile.TemporaryDirectory(prefix='grpctest-bad-seed-') as directory:
             bad_seed = Path(directory) / 'seed.sql'
             source = (ROOT / 'tests/seed.sql').read_text()
@@ -140,7 +144,7 @@ def main():
         print('PASS: repeat migration/seed preserves changed stock and does not duplicate fixture', flush=True)
         with tempfile.TemporaryDirectory(prefix='grpctest-migration-cases-') as directory:
             migrations = Path(directory)
-            for source in (ROOT / 'deploy/mysql/migrations').glob('*.sql'):
+            for source in MIGRATIONS:
                 shutil.copy2(source, migrations / source.name)
             baseline = migrations / '0001_baseline.sql'
             original = baseline.read_text()
@@ -155,16 +159,18 @@ def main():
             env.sql('DELETE FROM grpctest_migrations.schema_migrations WHERE version=99;')
             print('PASS: changed applied SQL/seed and unknown migration versions are rejected', flush=True)
             # A test-only upgrade demonstrates serialization without altering the baseline.
-            (migrations / '0006_test_upgrade.sql').write_text('DO SLEEP(1); ALTER TABLE grpctest_orders_srv.shoppingcart ADD COLUMN integration_note VARCHAR(20) NULL;')
+            upgrade_version = MIGRATION_COUNT + 1
+            failure_version = MIGRATION_COUNT + 2
+            (migrations / f'{upgrade_version:04d}_test_upgrade.sql').write_text('DO SLEEP(1); ALTER TABLE grpctest_orders_srv.shoppingcart ADD COLUMN integration_note VARCHAR(20) NULL;')
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
                 results = list(pool.map(lambda _: env.dbtool('up', migrations=migrations), range(2)))
             assert all(result.returncode == 0 for result in results)
-            assert env.sql('SELECT COUNT(*) FROM grpctest_migrations.schema_migrations;') == '6'
+            assert env.sql('SELECT COUNT(*) FROM grpctest_migrations.schema_migrations;') == str(upgrade_version)
             assert env.sql('SELECT stocks FROM grpctest_inventory_srv.inventory WHERE goods=421;') == '17'
             print('PASS: concurrent incremental migration applies once and preserves data', flush=True)
-            (migrations / '0007_test_failure.sql').write_text('CREATE TABLE grpctest_orders_srv.migration_probe(id INT); INSERT INTO grpctest_orders_srv.does_not_exist VALUES (1);')
+            (migrations / f'{failure_version:04d}_test_failure.sql').write_text('CREATE TABLE grpctest_orders_srv.migration_probe(id INT); INSERT INTO grpctest_orders_srv.does_not_exist VALUES (1);')
             rejected(env.dbtool('up', migrations=migrations, check=False), 'history remains dirty')
-            assert env.sql('SELECT dirty FROM grpctest_migrations.schema_migrations WHERE version=7;') == '1'
+            assert env.sql(f'SELECT dirty FROM grpctest_migrations.schema_migrations WHERE version={failure_version};') == '1'
             assert env.sql("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='grpctest_orders_srv' AND TABLE_NAME='migration_probe';") == '1'
             rejected(env.dbtool('up', migrations=migrations, check=False), 'dirty migration history')
             print('PASS: partial DDL remains marked dirty and blocks automatic retries', flush=True)
@@ -173,7 +179,7 @@ def main():
         env.up()
         env.dbtool('up')
         env.dbtool('seed', seed=ROOT / 'tests/seed.sql')
-        assert env.sql('SELECT COUNT(*) FROM grpctest_migrations.schema_migrations; SELECT stocks FROM grpctest_inventory_srv.inventory WHERE goods=421;') == '5\n100'
+        assert env.sql('SELECT COUNT(*) FROM grpctest_migrations.schema_migrations; SELECT stocks FROM grpctest_inventory_srv.inventory WHERE goods=421;') == f'{MIGRATION_COUNT}\n100'
         print('PASS: explicit test-only reset recovers a clean baseline and missing init file', flush=True)
     finally:
         if env.state:

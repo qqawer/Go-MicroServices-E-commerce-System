@@ -48,7 +48,14 @@ func validateCreation(req *proto.OrderRequest) error {
 	if req.GetUserId() <= 0 || !requestKeyPattern.MatchString(req.GetRequestKey()) {
 		return status.Error(codes.InvalidArgument, "用户及 Idempotency-Key 无效")
 	}
-	if req.Name == "" || utf8.RuneCountInString(req.Name) > 20 || req.Address == "" || utf8.RuneCountInString(req.Address) > 100 || !mobilePattern.MatchString(req.Mobile) || utf8.RuneCountInString(req.Post) > 20 {
+	if req.AddressId != 0 {
+		return status.Error(codes.InvalidArgument, "地址簿下单请使用 CreateOrderFromAddress")
+	}
+	return validateShipping(req.Name, req.Address, req.Mobile, req.Post)
+}
+
+func validateShipping(name, address, mobile, post string) error {
+	if name == "" || utf8.RuneCountInString(name) > 20 || address == "" || utf8.RuneCountInString(address) > 100 || !mobilePattern.MatchString(mobile) || utf8.RuneCountInString(post) > 20 {
 		return status.Error(codes.InvalidArgument, "收货人、地址、手机号或留言无效")
 	}
 	return nil
@@ -56,6 +63,11 @@ func validateCreation(req *proto.OrderRequest) error {
 
 func requestHash(req *proto.OrderRequest) string {
 	body, _ := json.Marshal([]string{strconv.Itoa(int(req.UserId)), req.Name, req.Address, req.Mobile, req.Post})
+	if req.AddressId > 0 {
+		// Hash the original selector, never mutable address-book contents. Keep the
+		// legacy five-field encoding unchanged so pre-upgrade requests still replay.
+		body, _ = json.Marshal([]string{"address-book:v1", strconv.Itoa(int(req.UserId)), strconv.Itoa(int(req.AddressId)), req.Post})
+	}
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:])
 }
@@ -76,6 +88,10 @@ func prepareCreation(ctx context.Context, req *proto.OrderRequest) (model.OrderT
 		return record, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return record, err
+	}
+	shipping, err := creationShipping(ctx, req)
+	if err != nil {
 		return record, err
 	}
 	var cart []model.ShoppingCart
@@ -110,7 +126,9 @@ func prepareCreation(ctx context.Context, req *proto.OrderRequest) (model.OrderT
 	if payType == "alipay" && (!global.ServerConfig.Alipay.Enabled || global.PaymentGateway == nil) {
 		return record, status.Error(codes.FailedPrecondition, "支付宝支付尚未就绪")
 	}
-	snapshot := creationSnapshot{Cart: cart, Order: model.OrderInfo{User: req.UserId, OrderSn: GenerationSn(req.UserId), Address: req.Address, SignerName: req.Name, SingerMobile: req.Mobile, Post: req.Post, PayType: payType}}
+	shipping.OrderSn = GenerationSn(req.UserId)
+	shipping.PayType = payType
+	snapshot := creationSnapshot{Cart: cart, Order: shipping}
 	var total int64
 	seen := map[int32]bool{}
 	for _, item := range goods.Data {
@@ -198,13 +216,21 @@ func orderResponse(order model.OrderInfo) *proto.OrderInfoResponse {
 }
 
 func (o *OrderServer) CreateOrder(ctx context.Context, req *proto.OrderRequest) (*proto.OrderInfoResponse, error) {
+	return o.createOrder(ctx, req, false)
+}
+
+func (o *OrderServer) createOrder(ctx context.Context, req *proto.OrderRequest, fromAddress bool) (*proto.OrderInfoResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
 	}
 	if global.ServerConfig == nil || global.DB == nil || global.GoodsSrvClient == nil || global.InventorySrvClient == nil || global.MQTransactions == nil || global.MQOrder == nil || global.MQInventory == nil {
 		return nil, status.Error(codes.FailedPrecondition, "订单交易服务尚未就绪")
 	}
-	if err := validateCreation(req); err != nil {
+	validate := validateCreation
+	if fromAddress {
+		validate = validateAddressCreation
+	}
+	if err := validate(req); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)

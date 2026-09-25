@@ -103,6 +103,9 @@ func validateServerConfig(cfg *config.ServerConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("order service configuration must be a JSON object")
 	}
+	if strings.TrimSpace(cfg.UserSrvInfo.Name) == "" {
+		cfg.UserSrvInfo.Name = "user-srv"
+	}
 	for _, field := range []struct{ name, value string }{
 		{"name", cfg.Name}, {"host", cfg.Host},
 		{"mysql.host", cfg.MysqlInfo.Host}, {"mysql.name", cfg.MysqlInfo.Name}, {"mysql.user", cfg.MysqlInfo.User},

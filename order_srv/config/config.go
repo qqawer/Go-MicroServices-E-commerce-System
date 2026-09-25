@@ -38,8 +38,10 @@ type ServerConfig struct {
 	GoodsSerInfo GoodsSrvConfig `mapstructure:"goods_srv" json:"goods_srv"`
 	//库存微服务
 	InventorySerInfo GoodsSrvConfig `mapstructure:"inventory_srv" json:"inventory_srv"`
-	MqInfo           MqConfig       `mapstructure:"rocket" json:"rocket"`
-	Alipay           payment.Config `mapstructure:"alipay" json:"alipay"`
+	// AddressBook shares the user RPC process; omitted configuration uses user-srv.
+	UserSrvInfo GoodsSrvConfig `mapstructure:"user_srv" json:"user_srv"`
+	MqInfo      MqConfig       `mapstructure:"rocket" json:"rocket"`
+	Alipay      payment.Config `mapstructure:"alipay" json:"alipay"`
 }
 type NacosConfig struct {
 	Host      string `mapstructure:"host" json:"host"`

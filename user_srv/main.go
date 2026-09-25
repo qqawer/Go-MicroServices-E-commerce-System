@@ -48,6 +48,7 @@ func main() {
 	
 	server := grpc.NewServer()
 	proto.RegisterUserServer(server,&handler.UserServer{})
+	proto.RegisterAddressBookServer(server, &handler.AddressServer{})
 	// lis,err:=net.Listen("tcp", "0.0.0.0:8088")
 	lis,err:=net.Listen("tcp",fmt.Sprintf("%s:%d",*IP,*Port))
 	if err!=nil{

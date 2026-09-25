@@ -25,6 +25,7 @@ var (
 	NacosConfig        config.NacosConfig
 	GoodsSrvClient     proto.GoodsClient
 	InventorySrvClient proto.InventoryClient
+	AddressBookClient  proto.AddressBookClient
 	Rs                 *redsync.Redsync
 
 	GroupInventory producer.Option

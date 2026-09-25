@@ -29,6 +29,16 @@ func TestParseServerConfigWithoutTransactionDependencies(t *testing.T) {
 	if cfg.MysqlInfo.Port != "3306" || cfg.MysqlInfo.Name != "orders" || cfg.MqInfo.Host != "" {
 		t.Fatal("existing MySQL schema or optional MQ fields changed")
 	}
+	if cfg.UserSrvInfo.Name != "user-srv" {
+		t.Fatal("existing Nacos config must default address lookup to user-srv")
+	}
+}
+
+func TestParseServerConfigPreservesExplicitUserService(t *testing.T) {
+	cfg, err := parseServerConfig(strings.Replace(validOrderConfig, `"name":"orders-srv"`, `"user_srv":{"name":"custom-user-srv"},"name":"orders-srv"`, 1))
+	if err != nil || cfg.UserSrvInfo.Name != "custom-user-srv" {
+		t.Fatalf("configured address service was not preserved: %v", err)
+	}
 }
 
 func TestParseServerConfigRejectsInvalidRequiredFields(t *testing.T) {
