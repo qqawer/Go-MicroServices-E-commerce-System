@@ -318,16 +318,25 @@ func (O *OrderServer) OrderList(ctx context.Context, req *proto.OrderFilterReque
 
 // OrderDetail 订单详情
 func (O *OrderServer) OrderDetail(ctx context.Context, req *proto.OrderRequest) (*proto.OrderInfoDetailResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
+	if req.GetId() <= 0 || req.GetUserId() < 0 {
+		return nil, status.Error(codes.InvalidArgument, "订单编号无效")
+	}
 	var order model.OrderInfo
 	var Rsp proto.OrderInfoDetailResponse
-	if result := global.DB.Where(&model.OrderInfo{BaseModel: model.BaseModel{ID: req.Id}, User: req.UserId}).First(&order); result.RowsAffected == 0 {
+	if err := global.DB.WithContext(ctx).Where(&model.OrderInfo{BaseModel: model.BaseModel{ID: req.Id}, User: req.UserId}).First(&order).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, orderDetailReadError(ctx, "订单暂时无法读取")
+		}
 		return nil, status.Errorf(codes.NotFound, "订单记录不存在")
 	}
 
 	OrderInfo := *orderResponse(order)
 	var decision model.OrderTransaction
 	if err := global.DB.WithContext(ctx).Where("order_sn = ?", order.OrderSn).First(&decision).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, status.Error(codes.Unavailable, "订单付款期限暂时无法读取")
+		return nil, orderDetailReadError(ctx, "订单付款期限暂时无法读取")
 	}
 	if decision.ExpiresAt != nil {
 		OrderInfo.ExpiresAt = decision.ExpiresAt.Unix()
@@ -348,7 +357,9 @@ func (O *OrderServer) OrderDetail(ctx context.Context, req *proto.OrderRequest) 
 	Rsp.OrderInfo = &OrderInfo
 
 	var GoodsList []model.OrderGoods
-	if result := global.DB.Where(&model.OrderGoods{Order: order.ID}).Find(&GoodsList); result.RowsAffected == 0 {
+	if result := global.DB.WithContext(ctx).Where(&model.OrderGoods{Order: order.ID}).Find(&GoodsList); result.Error != nil {
+		return nil, orderDetailReadError(ctx, "订单商品暂时无法读取")
+	} else if result.RowsAffected == 0 {
 		return nil, status.Errorf(codes.NotFound, "商品不存在")
 	}
 	for _, goods := range GoodsList {
@@ -364,6 +375,13 @@ func (O *OrderServer) OrderDetail(ctx context.Context, req *proto.OrderRequest) 
 	}
 
 	return &Rsp, nil
+}
+
+func orderDetailReadError(ctx context.Context, message string) error {
+	if err := ctx.Err(); err != nil {
+		return status.FromContextError(err).Err()
+	}
+	return status.Error(codes.Unavailable, message)
 }
 
 // UpdateOrderStatus 更新订单状态

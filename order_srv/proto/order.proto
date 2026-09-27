@@ -14,6 +14,8 @@ service Order {
     rpc CreateOrder(OrderRequest)returns (OrderInfoResponse); //创建订单
     // Separate method prevents an older server from silently ignoring addressId.
     rpc CreateOrderFromAddress(OrderRequest) returns (OrderInfoResponse);
+    // Requires the exact cart rows and prices reviewed by the buyer.
+    rpc CreateReviewedOrderFromAddress(OrderRequest) returns (OrderInfoResponse);
     rpc GetOrderCreation(OrderRequest) returns (OrderInfoResponse); // Current user + requestKey, including pending/cancelled creation.
     rpc OrderList(OrderFilterRequest) returns (OrderListResponse); // 订单列表
     rpc OrderDetail(OrderRequest) returns (OrderInfoDetailResponse); // 订单详情,需要给出商品信息
@@ -58,7 +60,15 @@ message OrderRequest {
     string mobile= 5;
     string post = 6;
     string requestKey = 7; // Required for creation/retry; scoped to userId.
-    int32 addressId = 8; // CreateOrderFromAddress only; owned by userId.
+    int32 addressId = 8; // Address-backed creation methods only; owned by userId.
+    repeated CheckoutItem checkoutItems = 9; // CreateReviewedOrderFromAddress only.
+}
+
+message CheckoutItem {
+    int32 cartId = 1;
+    int32 goodsId = 2;
+    int32 nums = 3;
+    int64 unitCents = 4;
 }
 
 message OrderInfoResponse {

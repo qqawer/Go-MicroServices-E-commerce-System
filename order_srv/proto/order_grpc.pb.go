@@ -20,17 +20,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Order_CartItemList_FullMethodName               = "/Order/CartItemList"
-	Order_CreateCarItem_FullMethodName              = "/Order/CreateCarItem"
-	Order_UpdateCartItem_FullMethodName             = "/Order/UpdateCartItem"
-	Order_DeleteCartItem_FullMethodName             = "/Order/DeleteCartItem"
-	Order_CreateOrder_FullMethodName                = "/Order/CreateOrder"
-	Order_CreateOrderFromAddress_FullMethodName     = "/Order/CreateOrderFromAddress"
-	Order_GetOrderCreation_FullMethodName           = "/Order/GetOrderCreation"
-	Order_OrderList_FullMethodName                  = "/Order/OrderList"
-	Order_OrderDetail_FullMethodName                = "/Order/OrderDetail"
-	Order_UpdateOrderStatus_FullMethodName          = "/Order/UpdateOrderStatus"
-	Order_ProcessPaymentNotification_FullMethodName = "/Order/ProcessPaymentNotification"
+	Order_CartItemList_FullMethodName                   = "/Order/CartItemList"
+	Order_CreateCarItem_FullMethodName                  = "/Order/CreateCarItem"
+	Order_UpdateCartItem_FullMethodName                 = "/Order/UpdateCartItem"
+	Order_DeleteCartItem_FullMethodName                 = "/Order/DeleteCartItem"
+	Order_CreateOrder_FullMethodName                    = "/Order/CreateOrder"
+	Order_CreateOrderFromAddress_FullMethodName         = "/Order/CreateOrderFromAddress"
+	Order_CreateReviewedOrderFromAddress_FullMethodName = "/Order/CreateReviewedOrderFromAddress"
+	Order_GetOrderCreation_FullMethodName               = "/Order/GetOrderCreation"
+	Order_OrderList_FullMethodName                      = "/Order/OrderList"
+	Order_OrderDetail_FullMethodName                    = "/Order/OrderDetail"
+	Order_UpdateOrderStatus_FullMethodName              = "/Order/UpdateOrderStatus"
+	Order_ProcessPaymentNotification_FullMethodName     = "/Order/ProcessPaymentNotification"
 )
 
 // OrderClient is the client API for Order service.
@@ -46,6 +47,8 @@ type OrderClient interface {
 	CreateOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error)
 	// Separate method prevents an older server from silently ignoring addressId.
 	CreateOrderFromAddress(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error)
+	// Requires the exact cart rows and prices reviewed by the buyer.
+	CreateReviewedOrderFromAddress(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error)
 	GetOrderCreation(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error)
 	OrderList(ctx context.Context, in *OrderFilterRequest, opts ...grpc.CallOption) (*OrderListResponse, error)
 	OrderDetail(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoDetailResponse, error)
@@ -122,6 +125,16 @@ func (c *orderClient) CreateOrderFromAddress(ctx context.Context, in *OrderReque
 	return out, nil
 }
 
+func (c *orderClient) CreateReviewedOrderFromAddress(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OrderInfoResponse)
+	err := c.cc.Invoke(ctx, Order_CreateReviewedOrderFromAddress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *orderClient) GetOrderCreation(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderInfoResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(OrderInfoResponse)
@@ -185,6 +198,8 @@ type OrderServer interface {
 	CreateOrder(context.Context, *OrderRequest) (*OrderInfoResponse, error)
 	// Separate method prevents an older server from silently ignoring addressId.
 	CreateOrderFromAddress(context.Context, *OrderRequest) (*OrderInfoResponse, error)
+	// Requires the exact cart rows and prices reviewed by the buyer.
+	CreateReviewedOrderFromAddress(context.Context, *OrderRequest) (*OrderInfoResponse, error)
 	GetOrderCreation(context.Context, *OrderRequest) (*OrderInfoResponse, error)
 	OrderList(context.Context, *OrderFilterRequest) (*OrderListResponse, error)
 	OrderDetail(context.Context, *OrderRequest) (*OrderInfoDetailResponse, error)
@@ -218,6 +233,9 @@ func (UnimplementedOrderServer) CreateOrder(context.Context, *OrderRequest) (*Or
 }
 func (UnimplementedOrderServer) CreateOrderFromAddress(context.Context, *OrderRequest) (*OrderInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateOrderFromAddress not implemented")
+}
+func (UnimplementedOrderServer) CreateReviewedOrderFromAddress(context.Context, *OrderRequest) (*OrderInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateReviewedOrderFromAddress not implemented")
 }
 func (UnimplementedOrderServer) GetOrderCreation(context.Context, *OrderRequest) (*OrderInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetOrderCreation not implemented")
@@ -363,6 +381,24 @@ func _Order_CreateOrderFromAddress_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Order_CreateReviewedOrderFromAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OrderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServer).CreateReviewedOrderFromAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Order_CreateReviewedOrderFromAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServer).CreateReviewedOrderFromAddress(ctx, req.(*OrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Order_GetOrderCreation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(OrderRequest)
 	if err := dec(in); err != nil {
@@ -483,6 +519,10 @@ var Order_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateOrderFromAddress",
 			Handler:    _Order_CreateOrderFromAddress_Handler,
+		},
+		{
+			MethodName: "CreateReviewedOrderFromAddress",
+			Handler:    _Order_CreateReviewedOrderFromAddress_Handler,
 		},
 		{
 			MethodName: "GetOrderCreation",

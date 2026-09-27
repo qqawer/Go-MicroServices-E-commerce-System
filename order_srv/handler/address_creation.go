@@ -15,10 +15,17 @@ import (
 // CreateOrderFromAddress has its own method so mixed-version deployments cannot
 // accept a selector that an older CreateOrder implementation silently ignores.
 func (o *OrderServer) CreateOrderFromAddress(ctx context.Context, req *proto.OrderRequest) (*proto.OrderInfoResponse, error) {
-	return o.createOrder(ctx, req, true)
+	return o.createOrder(ctx, req, addressCreation)
 }
 
 func validateAddressCreation(req *proto.OrderRequest) error {
+	if len(req.GetCheckoutItems()) != 0 {
+		return status.Error(codes.InvalidArgument, "确认清单下单请使用 CreateReviewedOrderFromAddress")
+	}
+	return validateAddressSelector(req)
+}
+
+func validateAddressSelector(req *proto.OrderRequest) error {
 	if req.GetUserId() <= 0 || !requestKeyPattern.MatchString(req.GetRequestKey()) || req.GetAddressId() <= 0 {
 		return status.Error(codes.InvalidArgument, "用户、地址或 Idempotency-Key 无效")
 	}

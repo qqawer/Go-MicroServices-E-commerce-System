@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math"
 	"regexp"
+	"sort"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -51,6 +52,9 @@ func validateCreation(req *proto.OrderRequest) error {
 	if req.AddressId != 0 {
 		return status.Error(codes.InvalidArgument, "地址簿下单请使用 CreateOrderFromAddress")
 	}
+	if len(req.CheckoutItems) != 0 {
+		return status.Error(codes.InvalidArgument, "确认清单下单请使用 CreateReviewedOrderFromAddress")
+	}
 	return validateShipping(req.Name, req.Address, req.Mobile, req.Post)
 }
 
@@ -67,6 +71,22 @@ func requestHash(req *proto.OrderRequest) string {
 		// Hash the original selector, never mutable address-book contents. Keep the
 		// legacy five-field encoding unchanged so pre-upgrade requests still replay.
 		body, _ = json.Marshal([]string{"address-book:v1", strconv.Itoa(int(req.UserId)), strconv.Itoa(int(req.AddressId)), req.Post})
+	}
+	if len(req.CheckoutItems) > 0 {
+		// Only the reviewed method accepts items. Canonicalize without changing the
+		// caller's protobuf or either pre-existing request-hash encoding.
+		items := make([][4]int64, 0, len(req.CheckoutItems))
+		for _, item := range req.CheckoutItems {
+			items = append(items, [4]int64{int64(item.GetCartId()), int64(item.GetGoodsId()), int64(item.GetNums()), item.GetUnitCents()})
+		}
+		sort.Slice(items, func(i, j int) bool { return items[i][0] < items[j][0] })
+		body, _ = json.Marshal(struct {
+			Mode      string
+			UserID    int32
+			AddressID int32
+			Post      string
+			Items     [][4]int64
+		}{"reviewed-address:v1", req.UserId, req.AddressId, req.Post, items})
 	}
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:])
@@ -98,6 +118,13 @@ func prepareCreation(ctx context.Context, req *proto.OrderRequest) (model.OrderT
 	if err := global.DB.WithContext(ctx).Where("user = ? AND checked = ?", req.UserId, true).Order("id").Limit(1001).Find(&cart).Error; err != nil {
 		return record, err
 	}
+	var reviewedPrices map[int32]int64
+	if len(req.CheckoutItems) > 0 {
+		reviewedPrices, err = reviewedCartPrices(req.CheckoutItems, cart)
+		if err != nil {
+			return record, err
+		}
+	}
 	if len(cart) == 0 || len(cart) > 1000 {
 		return record, status.Error(codes.InvalidArgument, "请勾选 1 至 1000 条购物车记录")
 	}
@@ -117,6 +144,9 @@ func prepareCreation(ctx context.Context, req *proto.OrderRequest) (model.OrderT
 		return record, err
 	}
 	if goods == nil || len(goods.Data) != len(ids) {
+		if reviewedPrices != nil {
+			return record, checkoutChanged()
+		}
 		return record, status.Error(codes.FailedPrecondition, "购物车中存在无效商品")
 	}
 	payType := global.ServerConfig.MqInfo.Mode
@@ -136,18 +166,20 @@ func prepareCreation(ctx context.Context, req *proto.OrderRequest) (model.OrderT
 			return record, status.Error(codes.Internal, "商品清单不一致")
 		}
 		if !item.OnSale || !item.InventoryReady {
+			if reviewedPrices != nil {
+				return record, checkoutChanged()
+			}
 			return record, status.Error(codes.FailedPrecondition, "存在未上架或库存未初始化的商品")
 		}
 		seen[item.Id] = true
 		// The legacy goods protocol stores float32 prices. Normalize its shortest
 		// decimal representation once at checkout, then calculate only in cents.
-		price, err := strconv.ParseFloat(strconv.FormatFloat(float64(item.ShopPrice), 'f', -1, 32), 64)
-		if err != nil || math.IsNaN(price) || math.IsInf(price, 0) || price <= 0 || price > 1e9 {
-			return record, status.Error(codes.FailedPrecondition, "商品价格无效")
+		cents, err := checkoutUnitCents(item.ShopPrice)
+		if reviewedPrices != nil && (err != nil || reviewedPrices[item.Id] != cents) {
+			return record, checkoutChanged()
 		}
-		cents := int64(math.Round(price * 100))
-		if cents <= 0 || math.Abs(price*100-float64(cents)) > 0.00001 {
-			return record, status.Error(codes.FailedPrecondition, "商品价格不能超过两位小数")
+		if err != nil {
+			return record, err
 		}
 		if cents > (1e12-total)/int64(nums[item.Id]) {
 			return record, status.Error(codes.InvalidArgument, "订单总金额超出范围")
@@ -216,10 +248,18 @@ func orderResponse(order model.OrderInfo) *proto.OrderInfoResponse {
 }
 
 func (o *OrderServer) CreateOrder(ctx context.Context, req *proto.OrderRequest) (*proto.OrderInfoResponse, error) {
-	return o.createOrder(ctx, req, false)
+	return o.createOrder(ctx, req, rawCreation)
 }
 
-func (o *OrderServer) createOrder(ctx context.Context, req *proto.OrderRequest, fromAddress bool) (*proto.OrderInfoResponse, error) {
+type creationMode uint8
+
+const (
+	rawCreation creationMode = iota
+	addressCreation
+	reviewedCreation
+)
+
+func (o *OrderServer) createOrder(ctx context.Context, req *proto.OrderRequest, mode creationMode) (*proto.OrderInfoResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
 	}
@@ -227,8 +267,10 @@ func (o *OrderServer) createOrder(ctx context.Context, req *proto.OrderRequest, 
 		return nil, status.Error(codes.FailedPrecondition, "订单交易服务尚未就绪")
 	}
 	validate := validateCreation
-	if fromAddress {
+	if mode == addressCreation {
 		validate = validateAddressCreation
+	} else if mode == reviewedCreation {
+		validate = validateReviewedCreation
 	}
 	if err := validate(req); err != nil {
 		return nil, err
@@ -265,6 +307,18 @@ func (o *OrderServer) createOrder(ctx context.Context, req *proto.OrderRequest, 
 	}
 	result, err := creationResult(ctx, record)
 	return result, creationError(ctx, err)
+}
+
+func checkoutUnitCents(value float32) (int64, error) {
+	price, err := strconv.ParseFloat(strconv.FormatFloat(float64(value), 'f', -1, 32), 64)
+	if err != nil || math.IsNaN(price) || math.IsInf(price, 0) || price <= 0 || price > 1e9 {
+		return 0, status.Error(codes.FailedPrecondition, "商品价格无效")
+	}
+	cents := int64(math.Round(price * 100))
+	if cents <= 0 || math.Abs(price*100-float64(cents)) > 0.00001 {
+		return 0, status.Error(codes.FailedPrecondition, "商品价格不能超过两位小数")
+	}
+	return cents, nil
 }
 func (o *OrderServer) GetOrderCreation(ctx context.Context, req *proto.OrderRequest) (*proto.OrderInfoResponse, error) {
 	if req.GetUserId() <= 0 || !requestKeyPattern.MatchString(req.GetRequestKey()) {
