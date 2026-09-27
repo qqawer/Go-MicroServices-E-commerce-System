@@ -62,6 +62,9 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 
 	var goods []model.Goods
 	localDB := global.DB.Model(model.Goods{})
+	if req.StoreVisibleOnly {
+		localDB = localDB.WithContext(ctx).Where("on_sale = ? AND inventory_ready = ?", true, true)
+	}
 	if req.KeyWords != "" {
 		//搜索
 		localDB = localDB.Where("name LIKE ?", "%"+req.KeyWords+"%")
@@ -88,7 +91,15 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 	var subQuery string
 	if req.TopCategory > 0 {
 		var category model.Category
-		if result := global.DB.First(&category, req.TopCategory); result.RowsAffected == 0 {
+		categoryDB := global.DB
+		if req.StoreVisibleOnly {
+			categoryDB = categoryDB.WithContext(ctx)
+		}
+		result := categoryDB.First(&category, req.TopCategory)
+		if req.StoreVisibleOnly && result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, storeGoodsListError(ctx, result.Error)
+		}
+		if result.RowsAffected == 0 {
 			return nil, status.Errorf(codes.NotFound, "商品分类不存在")
 		}
 
@@ -104,11 +115,16 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 	}
 
 	var count int64
-	localDB.Count(&count)
+	if result := localDB.Count(&count); req.StoreVisibleOnly && result.Error != nil {
+		return nil, storeGoodsListError(ctx, result.Error)
+	}
 	goodsListResponse.Total = int32(count)
 
 	result := localDB.Preload("Category").Preload("Brands").Scopes(Paginate(int(req.Pages), int(req.PagePerNums))).Find(&goods)
 	if result.Error != nil {
+		if req.StoreVisibleOnly {
+			return nil, storeGoodsListError(ctx, result.Error)
+		}
 		return nil, result.Error
 	}
 
@@ -118,6 +134,14 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 	}
 
 	return goodsListResponse, nil
+}
+
+func storeGoodsListError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return status.FromContextError(ctx.Err()).Err()
+	}
+	zap.S().Errorw("查询商品列表失败", "error", err)
+	return status.Error(codes.Internal, "查询商品列表失败")
 }
 
 // BatchGetGoods 查询多个商品信息

@@ -256,6 +256,7 @@ message GoodsFilterRequest  {
     int32 pagePerNums = 8;
     string keyWords = 9;
     int32 brand = 10;
+    bool store_visible_only = 11; // 买家查询仅返回已上架且库存就绪商品；默认保留管理端查询范围。
 }
 
 //商品信息返回
