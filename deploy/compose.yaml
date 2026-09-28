@@ -16,7 +16,8 @@ services:
       MYSQL_DATABASE: grpctest_user_srv
       MYSQL_USER: grpctest
       MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?run init-env.py}
-    command: ["--innodb-buffer-pool-size=256M", "--max-connections=150"]
+    # Small learning dataset; retain connection and durability settings.
+    command: ["--innodb-buffer-pool-size=128M", "--max-connections=150"]
     volumes:
       - mysql-data:/var/lib/mysql
       - ./mysql/01-databases.sql:/docker-entrypoint-initdb.d/01-databases.sql:ro
@@ -48,9 +49,10 @@ services:
     environment:
       MODE: standalone
       PREFER_HOST_MODE: hostname
-      JVM_XMS: 512m
-      JVM_XMX: 768m
-      JVM_XMN: 256m
+      # Small standalone learning environment; see MEMORY.md for measured limits.
+      JVM_XMS: 128m
+      JVM_XMX: 384m
+      JVM_XMN: 64m
       NACOS_AUTH_ENABLE: "true"
       NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:?run init-env.py}
       NACOS_AUTH_IDENTITY_KEY: grpctestIdentity
@@ -133,7 +135,8 @@ services:
     # Personal, trusted deployment job only: Docker socket grants host control.
     user: "0:0"
     environment:
-      JAVA_OPTS: -Djenkins.install.runSetupWizard=false -Xms256m -Xmx768m
+      # Builds run in GitHub Actions; this controller only orchestrates deployment.
+      JAVA_OPTS: -Djenkins.install.runSetupWizard=false -Xms128m -Xmx384m
       DEPLOY_ROOT: ${DEPLOY_ROOT:?run init-env.py}
     ports: ["127.0.0.1:8080:8080"]
     volumes:

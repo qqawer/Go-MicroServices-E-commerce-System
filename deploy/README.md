@@ -21,6 +21,8 @@ PR 执行检查和镜像构建，不推送、不部署。两仓先运行 `ci/che
 
 **2026-09-28 容量修复**：Nacos 文件日志按大小/日期保留；应用发布后保留近期镜像；部署前后检查 Broker 磁盘和专用 Topic 写入。首次升级需先同步部署脚本、准备日志配置并创建探测 Topic，见 [容量与保留规则](CAPACITY.md)。
 
+**学习环境内存预算**：Nacos/Jenkins 堆和 MySQL 缓冲池已按当前小数据量调整。应用步骤、测量方法与 4 GiB 实例评估边界见 [内存预算](MEMORY.md)。
+
 ## 当前状态与限制
 
 - 已提供 MySQL、Redis、Nacos、Consul、Jenkins，以及四个 RPC / 三个 Web 服务的部署配置。
