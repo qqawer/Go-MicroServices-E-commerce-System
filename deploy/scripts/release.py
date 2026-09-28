@@ -10,6 +10,9 @@ import subprocess
 import sys
 import tempfile
 
+from capacity import check_disk, check_mq_write
+from image_retention import prune
+
 ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {
     'rpc': ('grpctest', ['user-srv', 'goods-srv', 'inventory-srv', 'order-srv']),
@@ -21,7 +24,8 @@ def env_file(path):
                 if line and not line.startswith('#'))
 
 def run(args, capture=False):
-    return subprocess.run(args, check=True, text=True, stdout=subprocess.PIPE if capture else None)
+    return subprocess.run(args, check=True, text=True, stdout=subprocess.PIPE if capture else None,
+                          timeout=60 if capture else 600)
 
 def main():
     preloaded = len(sys.argv) == 4 and sys.argv[3] == '--preloaded'
@@ -66,6 +70,8 @@ def main():
             health = run(['docker', 'inspect', '--format', '{{.State.Health.Status}}', ids[0]], capture=True).stdout.strip()
             if health != 'healthy':
                 raise ValueError(f'Infrastructure service is not healthy: {dependency}')
+        check_disk(run)
+        check_mq_write(run)
         sql = "SELECT DISTINCT TABLE_SCHEMA FROM information_schema.TABLES WHERE TABLE_SCHEMA LIKE 'grpctest_%'"
         schemas = set(run(infra + ['exec', '-T', 'mysql', 'sh', '-ec',
                           'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -ugrpctest -Nse "$1"', 'sh', sql], capture=True).stdout.split())
@@ -107,6 +113,8 @@ def main():
             # Pull all images before touching any running container.
             if not preloaded:
                 run(compose(new_env) + ['pull', *services])
+            check_disk(run, minimum_free_gib=2)
+            check_mq_write(run)
             for service in services:
                 ids = run(compose(old_env) + ['ps', '-aq', service], capture=True).stdout.split()
                 if ids:
@@ -115,7 +123,7 @@ def main():
                     old_services.append(service)
             try:
                 run(compose(new_env) + ['up', '-d', '--no-deps', '--pull', 'never', '--wait', '--wait-timeout', '180', *services])
-            except subprocess.CalledProcessError:
+            except subprocess.SubprocessError:
                 print('Deployment failed. Restoring the previous release.', file=sys.stderr)
                 new_services = [service for service in services if service not in old_services]
                 if new_services:
@@ -127,7 +135,13 @@ def main():
             os.replace(new_env, release_file)
             record = {'group': group, 'revision': revision, 'images': images, 'source': 'preloaded' if preloaded else 'ghcr'}
             (state / f'{group}-{revision}.json').write_text(json.dumps(record, indent=2) + '\n')
-            print(f'{group} {revision}: containers passed startup health checks (not business tests).')
+            print(f'{group} {revision}: startup, disk and MQ write checks passed (not full business tests).')
+            try:
+                prune(owner, state, [*previous.values(), *candidate.values()], apply=True)
+            except (ValueError, OSError, subprocess.SubprocessError) as error:
+                # The release is already healthy; a cleanup failure must not falsely
+                # report a rollback or delete the newly committed desired state.
+                print(f'WARNING: release succeeded but image retention failed ({type(error).__name__})', file=sys.stderr)
         finally:
             new_env.unlink(missing_ok=True)
             old_env.unlink(missing_ok=True)
@@ -135,6 +149,6 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as exc:
+    except (ValueError, KeyError, OSError, subprocess.SubprocessError) as exc:
         print(f'Deployment failed: {exc}', file=sys.stderr)
         sys.exit(1)

@@ -19,6 +19,8 @@
 
 PR 执行检查和镜像构建，不推送、不部署。两仓先运行 `ci/check.sh` 的生产入口构建与 Go race 回归；RPC 再执行独立 MySQL/Redis 的迁移和集成验证，全部通过后才构建镜像。操作和边界见 [独立测试说明](../tests/README.md)。`/health` 和 gRPC health 是启动检查，不证明登录、库存扣减、下单和支付业务正确。
 
+**2026-09-28 容量修复**：Nacos 文件日志按大小/日期保留；应用发布后保留近期镜像；部署前后检查 Broker 磁盘和专用 Topic 写入。首次升级需先同步部署脚本、准备日志配置并创建探测 Topic，见 [容量与保留规则](CAPACITY.md)。
+
 ## 当前状态与限制
 
 - 已提供 MySQL、Redis、Nacos、Consul、Jenkins，以及四个 RPC / 三个 Web 服务的部署配置。

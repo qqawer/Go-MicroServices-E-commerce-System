@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 # mqadmin can exit 0 after a Java exception: verify its output and the route.
-for topic in order-reback order_timeout; do
+for topic in order-reback order_timeout grpctest-healthcheck; do
   ready=false
   for attempt in 1 2 3 4 5 6 7 8 9 10; do
     output=$(sh mqadmin updateTopic -n mqnamesrv:9876 -b mqbroker:10911 -t "$topic" -r 4 -w 4 2>&1)

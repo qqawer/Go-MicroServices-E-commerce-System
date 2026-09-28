@@ -30,6 +30,8 @@ locals {
     "mysql/01-databases.sql",
     "scripts/install-docker.sh", "scripts/init-env.py", "scripts/stack.sh",
     "scripts/configure-nacos.py", "scripts/release.py",
+    "scripts/capacity.py", "scripts/image_retention.py", "scripts/prepare-nacos-logging.py",
+    "rocketmq/broker.conf", "rocketmq/topics.sh",
     "jenkins/Dockerfile", "jenkins/plugins.txt", "jenkins/init.groovy", "jenkins/Jenkinsfile",
   ]
   cloud_config = {
@@ -47,6 +49,7 @@ locals {
       python3 scripts/init-env.py
       bash scripts/stack.sh check
       bash scripts/stack.sh up
+      docker compose --env-file .env -f compose.yaml exec -T mqbroker sh -s < rocketmq/topics.sh
       python3 scripts/configure-nacos.py --apply
       install -d /var/lib/grpctest
       touch /var/lib/grpctest/infra-ready
