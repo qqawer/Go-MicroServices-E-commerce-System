@@ -44,7 +44,10 @@ def rpc_regressions(env):
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w') as handle:
             json.dump(config, handle)
-        subprocess.run(['go', 'test', '-mod=readonly', '-race', '-tags=integration',
+        # Suites share one disposable MySQL. Run packages sequentially so their
+        # independent 100/50/30-worker tests do not exhaust its 151 connections;
+        # concurrency inside each package remains unchanged.
+        subprocess.run(['go', 'test', '-mod=readonly', '-race', '-tags=integration', '-p', '1',
                         './tests/integration/...', '-count=1', '-timeout=180s'],
                        env=dict(os.environ, GRPCTEST_TEST_CONFIG=str(path), GOWORK='off'), check=True)
     print('PASS: four RPC handler/protocol regressions against real MySQL', flush=True)
