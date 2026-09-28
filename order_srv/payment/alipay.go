@@ -57,12 +57,30 @@ type Trade struct {
 	PaidAt      time.Time
 	// Refunded preserves explicit refund evidence even when gmt_payment is absent.
 	Refunded bool
+	// PaymentObserved preserves positive payment evidence on a channel query.
+	// It does not assert a refund. Missing optional fields do not prove non-payment.
+	PaymentObserved bool
 }
 
 type Gateway interface {
 	VerifyNotification(body string) (Trade, error)
 	Query(ctx context.Context, orderSn string) (Trade, error)
 	Close(ctx context.Context, orderSn string) error
+}
+
+// ClosureCreator is deliberately separate from Gateway: ordinary recovery must
+// never create a channel trade merely because a lookup returned NotFound.
+type ClosureCreator interface {
+	CreateForClosure(context.Context, ClosureRequest) error
+}
+
+// ClosureRequest is for an explicit operator-authorized sandbox close attempt.
+// BuyerID is the real sandbox buyer's Alipay account ID, not a shop user ID.
+type ClosureRequest struct {
+	OrderSn     string
+	AmountCents int64
+	BuyerID     string
+	ExpiresAt   time.Time
 }
 
 type gateway struct {
@@ -172,6 +190,20 @@ func (g *gateway) Query(ctx context.Context, orderSn string) (Trade, error) {
 	// not fields claimed to have been returned by Alipay. The sandbox configuration
 	// must pair this AppID with its own receiving seller account.
 	t.AppID, t.SellerID = g.appID, g.sellerID
+	// A CLOSED trade can follow a payment/refund. Optional positive payment
+	// amounts or a nonempty funding list must not be discarded merely because
+	// send_pay_date is absent. These observations do not assert a refund.
+	for _, amount := range []string{rsp.BuyerPayAmount, rsp.ReceiptAmount, rsp.PointAmount, rsp.InvoiceAmount} {
+		if amount == "" {
+			continue
+		}
+		cents, err := parseMoney(amount, true)
+		if err != nil {
+			return Trade{}, errGateway
+		}
+		t.PaymentObserved = t.PaymentObserved || cents > 0
+	}
+	t.PaymentObserved = t.PaymentObserved || len(rsp.FundBillList) > 0
 	// This SDK exposes no refund amount/date on TradeQueryRsp. Preserve the
 	// payment date above; do not invent missing refund evidence from the query.
 	return t, nil
@@ -201,6 +233,57 @@ func (g *gateway) Close(ctx context.Context, orderSn string) error {
 		return errGateway
 	}
 	return nil
+}
+
+// CreateForClosure attempts to bind an absent sandbox trade to its existing
+// merchant order number. It neither pays nor returns a cashier link. An ACK is
+// not closure: callers must close and query a verified CLOSED trade before
+// releasing inventory. Failures can still mean that creation reached Alipay.
+func (g *gateway) CreateForClosure(ctx context.Context, req ClosureRequest) error {
+	if g == nil || g.client == nil || g.client.IsProduction() {
+		return errors.New("closure creation is restricted to the sandbox")
+	}
+	if !identifier(req.OrderSn, 64) || req.AmountCents <= 0 || req.AmountCents > MaxAmountCents ||
+		!buyerIdentifier(req.BuyerID) || req.BuyerID == g.sellerID || !req.ExpiresAt.After(time.Now()) || req.ExpiresAt.After(time.Now().Add(5*time.Minute)) {
+		return errors.New("invalid sandbox closure request")
+	}
+	ctx, cancel := context.WithTimeout(ctx, gatewayTimeout)
+	defer cancel()
+	rsp, err := g.client.TradeCreate(ctx, alipay.TradeCreate{
+		Trade: alipay.Trade{
+			Subject:     "sandbox order closure " + req.OrderSn,
+			OutTradeNo:  req.OrderSn,
+			TotalAmount: fmt.Sprintf("%d.%02d", req.AmountCents/100, req.AmountCents%100),
+			ProductCode: "FACE_TO_FACE_PAYMENT",
+			TimeExpire:  req.ExpiresAt.In(alipayLocation).Format("2006-01-02 15:04:05"),
+		},
+		BuyerId: req.BuyerID,
+	})
+	if err != nil {
+		return providerError(ctx, err)
+	}
+	if rsp == nil {
+		return errGateway
+	}
+	if rsp.Code != alipay.CodeSuccess {
+		return businessError(rsp.Error)
+	}
+	if rsp.OutTradeNo != req.OrderSn || !identifier(rsp.TradeNo, 64) {
+		return errGateway
+	}
+	return nil
+}
+
+func buyerIdentifier(value string) bool {
+	if len(value) != 16 || !strings.HasPrefix(value, "2088") {
+		return false
+	}
+	for _, digit := range value {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func providerError(ctx context.Context, err error) error {

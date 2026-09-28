@@ -187,6 +187,14 @@ func closeOrder(ctx context.Context, number string) (bool, error) {
 		}
 		switch order.Status {
 		case "", "PAYING", "WAIT_BUYER_PAY", "CLOSING":
+		case "PAYMENT_REVIEW":
+			var review model.OrderCloseReview
+			if err := tx.Where("order_sn = ? AND resolved_at IS NULL", number).First(&review).Error; err != nil {
+				return status.Error(codes.FailedPrecondition, "该付款异常不能自动关闭")
+			}
+			if time.Now().Before(review.NextCheckAt) {
+				return nil
+			}
 		default:
 			return status.Error(codes.FailedPrecondition, "订单状态不能自动关闭")
 		}
@@ -194,18 +202,25 @@ func closeOrder(ctx context.Context, number string) (bool, error) {
 		if err := tx.Where("order_sn = ?", number).First(&decision).Error; err != nil {
 			return err
 		}
-		if decision.ExpiresAt == nil {
+		if decision.State != model.OrderCommitted || decision.ExpiresAt == nil {
 			return errors.New("order has no expiry")
 		}
 		if time.Now().Before(*decision.ExpiresAt) {
 			return status.Error(codes.Unavailable, "订单尚未到期")
 		}
 		if order.PayType == "alipay" {
+			if global.ServerConfig != nil {
+				if err := validateCloseReviewMerchant(tx, number, global.ServerConfig.Alipay.AppID, global.ServerConfig.Alipay.SellerID); err != nil {
+					return err
+				}
+			}
 			if err := ensureRefundAllowed(tx, order); err != nil {
 				return err
 			}
-			if err := tx.Model(&model.OrderInfo{}).Where("id = ?", order.ID).Update("status", "CLOSING").Error; err != nil {
-				return err
+			if order.Status != "PAYMENT_REVIEW" {
+				if err := tx.Model(&model.OrderInfo{}).Where("id = ?", order.ID).Update("status", "CLOSING").Error; err != nil {
+					return err
+				}
 			}
 			reconcile = true
 			return nil
@@ -222,21 +237,25 @@ func closeOrder(ctx context.Context, number string) (bool, error) {
 	if err != nil || !reconcile {
 		return refund, err
 	}
-	return settleClosingOrder(ctx, number)
+	refund, err = settleClosingOrder(ctx, number)
+	if err != nil {
+		return false, recordCloseFailure(ctx, number, err)
+	}
+	return refund, nil
 }
 
 // An exceptional payment observed after closure is an operator review item, not
 // permission to publish a new refund. Already completed inventory releases are
 // retained as facts and are never silently reversed here.
 func ensureRefundAllowed(tx *gorm.DB, order model.OrderInfo) error {
-	if paidStatus(order.Status) {
+	if paidStatus(order.Status) || order.PayTime != nil {
 		return status.Error(codes.FailedPrecondition, "已支付订单不能自动返库")
 	}
 	if order.PayType != "alipay" {
 		return nil
 	}
 	var count int64
-	if err := tx.Model(&model.OrderPayment{}).Where("order_sn = ? AND (review = ? OR status IN ?)", order.OrderSn, true, []string{"TRADE_SUCCESS", "TRADE_FINISHED"}).Count(&count).Error; err != nil {
+	if err := tx.Model(&model.OrderPayment{}).Where("order_sn = ? AND (review = ? OR paid_at IS NOT NULL OR status IN ?)", order.OrderSn, true, []string{"TRADE_SUCCESS", "TRADE_FINISHED"}).Count(&count).Error; err != nil {
 		return err
 	}
 	if count > 0 {

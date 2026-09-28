@@ -62,7 +62,7 @@ func paymentSetup(t *testing.T) (*gorm.DB, proto.OrderClient, *paymentGateway, *
 	global.ServerConfig = &config.ServerConfig{Alipay: payment.Config{Enabled: true, AppID: "test-app", SellerID: "test-seller"}}
 	global.PaymentGateway = gateway
 	t.Cleanup(func() {
-		for _, table := range []string{"order_payment", "order_event", "order_transaction", "orderinfo"} {
+		for _, table := range []string{"order_close_review", "order_payment", "order_event", "order_transaction", "orderinfo"} {
 			if err := db.Exec("DELETE FROM " + table + " WHERE order_sn LIKE 'pay-%'").Error; err != nil {
 				t.Error(err)
 			}

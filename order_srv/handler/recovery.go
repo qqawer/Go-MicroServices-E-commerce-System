@@ -45,7 +45,9 @@ func RecoverOrders(ctx context.Context) error {
 		return errors.Join(failures, ctx.Err())
 	}
 	var expired []model.OrderTransaction
-	if err := global.DB.WithContext(ctx).Table("order_transaction AS t").Select("t.*").Joins("JOIN orderinfo o ON o.order_sn = t.order_sn").Where("t.state = ? AND t.expires_at <= ? AND o.pay_type IN ? AND o.status IN ?", model.OrderCommitted, time.Now(), []string{"demo", "alipay"}, []string{"WAIT_BUYER_PAY", "PAYING", "CLOSING"}).Where("NOT EXISTS (SELECT 1 FROM order_payment p WHERE p.order_sn = t.order_sn AND (p.review = ? OR p.status IN ?))", true, []string{"TRADE_SUCCESS", "TRADE_FINISHED"}).Order("t.updated_at, t.order_sn").Limit(100).Find(&expired).Error; err != nil {
+	if err := global.DB.WithContext(ctx).Table("order_transaction AS t").Select("t.*").Joins("JOIN orderinfo o ON o.order_sn = t.order_sn").Where("t.state = ? AND t.expires_at <= ? AND o.pay_type IN ?", model.OrderCommitted, time.Now(), []string{"demo", "alipay"}).
+		Where("o.status IN ? OR (o.status = ? AND EXISTS (SELECT 1 FROM order_close_review r WHERE r.order_sn = t.order_sn AND r.resolved_at IS NULL AND r.next_check_at <= ?))", []string{"WAIT_BUYER_PAY", "PAYING", "CLOSING"}, "PAYMENT_REVIEW", time.Now()).
+		Where("NOT EXISTS (SELECT 1 FROM order_payment p WHERE p.order_sn = t.order_sn AND (p.review = ? OR p.status IN ?))", true, []string{"TRADE_SUCCESS", "TRADE_FINISHED"}).Order("t.updated_at, t.order_sn").Limit(100).Find(&expired).Error; err != nil {
 		return errors.Join(failures, err)
 	}
 	for _, record := range expired {

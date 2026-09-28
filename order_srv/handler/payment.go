@@ -75,6 +75,9 @@ func applyPaymentTrade(ctx context.Context, trade payment.Trade) (bool, error) {
 		if order.OrderSn != trade.OrderSn {
 			return status.Error(codes.FailedPrecondition, "支付订单号不匹配")
 		}
+		if err := validateCloseReviewMerchant(tx, trade.OrderSn, trade.AppID, trade.SellerID); err != nil {
+			return err
+		}
 		if order.PayType != "alipay" || order.TotalCents == nil || *order.TotalCents != trade.AmountCents {
 			return status.Error(codes.FailedPrecondition, "订单支付方式或金额不匹配")
 		}
@@ -110,7 +113,10 @@ func applyPaymentTrade(ctx context.Context, trade payment.Trade) (bool, error) {
 				changes["status"] = trade.Status
 			}
 		}
-		needsReview := (order.Status == "TRADE_CLOSED" && paidStatus(trade.Status)) || trade.Refunded || (trade.Status == "TRADE_CLOSED" && !trade.PaidAt.IsZero())
+		needsReview := (order.Status == "TRADE_CLOSED" && paidStatus(trade.Status)) || trade.Refunded ||
+			(trade.Status == "TRADE_CLOSED" && (!trade.PaidAt.IsZero() || trade.PaymentObserved || (order.PayTime != nil && !paidStatus(order.Status)))) ||
+			(trade.Status == "WAIT_BUYER_PAY" && !paidStatus(record.Status) && (!trade.PaidAt.IsZero() || trade.PaymentObserved)) ||
+			(!paidStatus(record.Status) && record.PaidAt != nil)
 		if record.Review || needsReview {
 			// Review is a durable exception state. Keep closed orders closed; all
 			// other affected orders explicitly stop being fulfillable.
@@ -122,7 +128,10 @@ func applyPaymentTrade(ctx context.Context, trade payment.Trade) (bool, error) {
 					return err
 				}
 			}
-			return tx.Model(&model.OrderPayment{}).Where("id = ?", record.ID).Updates(changes).Error
+			if err := tx.Model(&model.OrderPayment{}).Where("id = ?", record.ID).Updates(changes).Error; err != nil {
+				return err
+			}
+			return resolveCloseReview(tx, trade.OrderSn, "payment_exception")
 		}
 		if err := tx.Model(&model.OrderPayment{}).Where("id = ?", record.ID).Updates(changes).Error; err != nil {
 			return err
@@ -130,6 +139,14 @@ func applyPaymentTrade(ctx context.Context, trade payment.Trade) (bool, error) {
 		if paidStatus(trade.Status) {
 			switch order.Status {
 			case "", "PAYING", "WAIT_BUYER_PAY", "CLOSING", "TRADE_SUCCESS", "TRADE_FINISHED":
+			case "PAYMENT_REVIEW":
+				pending, err := unresolvedCloseReview(tx, trade.OrderSn)
+				if err != nil {
+					return err
+				}
+				if !pending {
+					return status.Error(codes.FailedPrecondition, "订单状态需要人工核对")
+				}
 			default:
 				return status.Error(codes.FailedPrecondition, "订单状态需要人工核对")
 			}
@@ -137,11 +154,22 @@ func applyPaymentTrade(ctx context.Context, trade payment.Trade) (bool, error) {
 			if order.Status == "TRADE_FINISHED" {
 				next = order.Status
 			}
-			return tx.Model(&model.OrderInfo{}).Where("id = ?", order.ID).Updates(map[string]interface{}{"status": next, "trade_no": trade.TradeNo, "pay_time": trade.PaidAt}).Error
+			if err := tx.Model(&model.OrderInfo{}).Where("id = ?", order.ID).Updates(map[string]interface{}{"status": next, "trade_no": trade.TradeNo, "pay_time": trade.PaidAt}).Error; err != nil {
+				return err
+			}
+			return resolveCloseReview(tx, trade.OrderSn, "channel_paid")
 		}
 		if trade.Status == "TRADE_CLOSED" && !paidStatus(order.Status) && !paidStatus(record.Status) && !record.Review {
 			switch order.Status {
 			case "", "PAYING", "WAIT_BUYER_PAY", "CLOSING", "TRADE_CLOSED":
+			case "PAYMENT_REVIEW":
+				pending, err := unresolvedCloseReview(tx, trade.OrderSn)
+				if err != nil {
+					return err
+				}
+				if !pending {
+					return status.Error(codes.FailedPrecondition, "订单状态需要人工核对")
+				}
 			default:
 				return status.Error(codes.FailedPrecondition, "订单状态需要人工核对")
 			}
@@ -154,6 +182,7 @@ func applyPaymentTrade(ctx context.Context, trade payment.Trade) (bool, error) {
 				return err
 			}
 			refund = true
+			return resolveCloseReview(tx, trade.OrderSn, "channel_closed")
 		}
 		return nil
 	})
@@ -184,9 +213,30 @@ func settleClosingOrder(ctx context.Context, number string) (bool, error) {
 	requestCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	trade, err := global.PaymentGateway.Query(requestCtx, number)
+	if errors.Is(err, payment.ErrNotFound) {
+		// A page request may create the trade after the first query. A close
+		// attempt followed by a new query can resolve that race; neither the
+		// not-found result nor the close acknowledgment alone releases stock.
+		pending, pendingErr := closureStillPending(requestCtx, number)
+		if pendingErr != nil {
+			return false, pendingErr
+		}
+		if !pending {
+			return false, nil
+		}
+		closeErr := global.PaymentGateway.Close(requestCtx, number)
+		trade, err = global.PaymentGateway.Query(requestCtx, number)
+		if err != nil {
+			return false, errors.Join(err, closeErr)
+		}
+	}
 	if err != nil {
 		return false, err
 	}
+	return settleQueriedTrade(requestCtx, number, trade)
+}
+
+func settleQueriedTrade(ctx context.Context, number string, trade payment.Trade) (bool, error) {
 	if trade.OrderSn != number {
 		return false, status.Error(codes.FailedPrecondition, "渠道查询订单号不匹配")
 	}
@@ -200,8 +250,15 @@ func settleClosingOrder(ctx context.Context, number string) (bool, error) {
 	if _, err := applyPaymentTrade(ctx, trade); err != nil {
 		return false, err
 	}
-	closeErr := global.PaymentGateway.Close(requestCtx, number)
-	trade, err = global.PaymentGateway.Query(requestCtx, number)
+	pending, err := closureStillPending(ctx, number)
+	if err != nil {
+		return false, err
+	}
+	if !pending {
+		return false, nil
+	}
+	closeErr := global.PaymentGateway.Close(ctx, number)
+	trade, err = global.PaymentGateway.Query(ctx, number)
 	if err != nil {
 		return false, errors.Join(closeErr, err)
 	}

@@ -58,7 +58,7 @@ func TestSignedPaymentNotificationRPCCommitsOnce(t *testing.T) {
 	oldDB, oldConfig, oldGateway := global.DB, global.ServerConfig, global.PaymentGateway
 	global.DB, global.ServerConfig, global.PaymentGateway = db, &config.ServerConfig{Alipay: cfg}, gate
 	t.Cleanup(func() {
-		for _, table := range []string{"order_payment", "order_event", "order_transaction", "orderinfo"} {
+		for _, table := range []string{"order_close_review", "order_payment", "order_event", "order_transaction", "orderinfo"} {
 			if err := db.Exec("DELETE FROM " + table + " WHERE order_sn LIKE 'pay-signed-%'").Error; err != nil {
 				t.Error(err)
 			}

@@ -11,6 +11,11 @@ COPY . .
 RUN case "$SERVICE" in user_srv|goods_srv|inventory_srv|order_srv) ;; *) echo "Invalid SERVICE" >&2; exit 1;; esac
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -mod=readonly -trimpath -ldflags="-s -w" -o /out/server "./$SERVICE"
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    mkdir -p /out/tools && \
+    if [ "$SERVICE" = "order_srv" ]; then \
+      CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -mod=readonly -trimpath -ldflags="-s -w" -o /out/tools/payment-review ./cmd/payment-review; \
+    fi
 
 FROM alpine:3.23@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40
 ARG SERVICE
@@ -19,6 +24,7 @@ RUN apk add --no-cache ca-certificates tzdata && \
     mkdir -p "/app/$SERVICE" /app/tmp && chown -R app:app /app
 WORKDIR /app/${SERVICE}
 COPY --from=builder /out/server /usr/local/bin/server
+COPY --from=builder /out/tools/ /usr/local/bin/
 COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.38@sha256:cacececcc3e94fde691141b80c34e288bc2743323d4f450274a0c636d07400a9 /ko-app/grpc-health-probe /usr/local/bin/grpc_health_probe
 USER 10001:10001
 ENV MXSHOP_DEBUG=true
