@@ -303,17 +303,44 @@ func (o *OrderListener) CheckLocalTransaction(msg *primitive.MessageExt) primiti
 
 // OrderList 订单列表
 func (O *OrderServer) OrderList(ctx context.Context, req *proto.OrderFilterRequest) (*proto.OrderListResponse, error) {
-	var orders []model.OrderInfo
-	var Rsp proto.OrderListResponse
-	//如果没有userid 就是默认值0，而gorm正好会忽略0值
-	var total int64
-	global.DB.Where(&model.OrderInfo{User: req.UserId}).Find(&model.OrderInfo{}).Count(&total)
-	Rsp.Total = int32(total)
-	global.DB.Scopes(Paginate(int(req.Pages), int(req.PagePerNums))).Where(&model.OrderInfo{User: req.UserId}).Find(&orders)
-	for _, order := range orders {
-		Rsp.Data = append(Rsp.Data, orderResponse(order))
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
 	}
-	return &Rsp, nil
+	if req == nil || req.UserId < 0 || req.Pages < 0 || req.PagePerNums < 0 {
+		return nil, status.Error(codes.InvalidArgument, "订单分页参数无效")
+	}
+	page, size := int64(req.Pages), int64(req.PagePerNums)
+	if page == 0 {
+		page = 1
+	}
+	if size == 0 {
+		size = 10
+	} else if size > 100 {
+		size = 100
+	}
+	offset := (page - 1) * size
+	if offset > math.MaxInt32 {
+		return nil, status.Error(codes.InvalidArgument, "订单分页参数无效")
+	}
+	// User zero retains the existing administrative scope. Buyer HTTP routes
+	// always supply the authenticated user's positive ID, regardless of role.
+	query := global.DB.WithContext(ctx).Model(&model.OrderInfo{}).Where(&model.OrderInfo{User: req.UserId})
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, orderDetailReadError(ctx, "订单列表暂时无法读取")
+	}
+	if total > math.MaxInt32 {
+		return nil, status.Error(codes.OutOfRange, "订单总数超出支持范围")
+	}
+	var orders []model.OrderInfo
+	if err := query.Order("id DESC").Offset(int(offset)).Limit(int(size)).Find(&orders).Error; err != nil {
+		return nil, orderDetailReadError(ctx, "订单列表暂时无法读取")
+	}
+	rsp := &proto.OrderListResponse{Total: int32(total)}
+	for _, order := range orders {
+		rsp.Data = append(rsp.Data, orderResponse(order))
+	}
+	return rsp, nil
 }
 
 // OrderDetail 订单详情

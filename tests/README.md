@@ -84,3 +84,6 @@ AWS 现有库与旧 bootstrap 保持原样，没有执行线上 DDL，也没有�
 
 
 2026-09-22 库存与消息修复新增 `tests/integration/inventory/transactions_test.go` 和 `tests/integration/order/transaction_test.go`，验证扣减/返库幂等、真实数据库提交前后故障、MQ 消费确认与订单持久决定/待发送事件。生产迁移现为 0001–0003、15 张业务表；完整 runner 同时验证存量流水保留与订单决定回填。真实 RocketMQ Broker 和运行时恢复调度尚未接通，消息层使用替身。说明见 [库存事务](../inventory_srv/TRANSACTIONS.md)。
+
+
+2026-09-29 历史订单：`tests/integration/order/history_test.go` 通过真实隔离 MySQL 和实际 gRPC 验证两名用户订单分别计数/分页、软删除排除、相同创建时间下按 ID 倒序，以及 10/1/0 条分页。RPC 的 COUNT/列表故障、取消与截止时间另由 `order_srv/handler/order_list_test.go` 验证，不再将查询失败当成空列表。此批未修改协议或数据库结构。
