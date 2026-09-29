@@ -61,9 +61,9 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 	goodsListResponse := &proto.GoodsListResponse{}
 
 	var goods []model.Goods
-	localDB := global.DB.Model(model.Goods{})
+	localDB := global.DB.WithContext(ctx).Model(model.Goods{})
 	if req.StoreVisibleOnly {
-		localDB = localDB.WithContext(ctx).Where("on_sale = ? AND inventory_ready = ?", true, true)
+		localDB = localDB.Where("on_sale = ? AND inventory_ready = ?", true, true)
 	}
 	if req.KeyWords != "" {
 		//搜索
@@ -91,12 +91,9 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 	var subQuery string
 	if req.TopCategory > 0 {
 		var category model.Category
-		categoryDB := global.DB
-		if req.StoreVisibleOnly {
-			categoryDB = categoryDB.WithContext(ctx)
-		}
+		categoryDB := global.DB.WithContext(ctx)
 		result := categoryDB.First(&category, req.TopCategory)
-		if req.StoreVisibleOnly && result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, storeGoodsListError(ctx, result.Error)
 		}
 		if result.RowsAffected == 0 {
@@ -115,17 +112,14 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 	}
 
 	var count int64
-	if result := localDB.Count(&count); req.StoreVisibleOnly && result.Error != nil {
+	if result := localDB.Count(&count); result.Error != nil {
 		return nil, storeGoodsListError(ctx, result.Error)
 	}
 	goodsListResponse.Total = int32(count)
 
 	result := localDB.Preload("Category").Preload("Brands").Scopes(Paginate(int(req.Pages), int(req.PagePerNums))).Find(&goods)
 	if result.Error != nil {
-		if req.StoreVisibleOnly {
-			return nil, storeGoodsListError(ctx, result.Error)
-		}
-		return nil, result.Error
+		return nil, storeGoodsListError(ctx, result.Error)
 	}
 
 	for _, good := range goods {
