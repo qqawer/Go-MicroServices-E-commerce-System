@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"grpctest/goods_srv/global"
 	"grpctest/goods_srv/model"
 	"grpctest/goods_srv/model/proto"
@@ -98,19 +99,30 @@ func (g *GoodsServer) DeleteBrand(ctx context.Context, req *proto.BrandRequest) 
 
 //UpdateBrand 更新品牌
 func (g *GoodsServer) UpdateBrand(ctx context.Context, req *proto.BrandRequest) (*emptypb.Empty, error) {
+	db := global.DB.WithContext(ctx)
 	var brand model.Brands
-	if result := global.DB.First(&brand, req.Id); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.NotFound, "品牌不存在")
+	if err := db.First(&brand, req.Id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "品牌不存在")
+		}
+		return nil, catalogDBError(ctx, err, "查询品牌失败")
 	}
 
-	if brand.Name != "" {
+	var fields []string
+	if req.Name != "" {
 		brand.Name = req.Name
+		fields = append(fields, "name")
 	}
 
-	if brand.Logo != "" {
+	if req.Logo != "" {
 		brand.Logo = req.Logo
+		fields = append(fields, "logo")
 	}
 
-	global.DB.Save(&brand)
+	if len(fields) > 0 {
+		if err := db.Model(&brand).Select(fields).Updates(&brand).Error; err != nil {
+			return nil, catalogDBError(ctx, err, "更新品牌失败")
+		}
+	}
 	return &emptypb.Empty{}, nil
 }

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"grpctest/goods_srv/global"
 	"grpctest/goods_srv/model"
 	"grpctest/goods_srv/model/proto"
@@ -9,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"gorm.io/gorm"
 )
 
 //BannerList 获取轮播图列表
@@ -16,7 +18,10 @@ func (g *GoodsServer) BannerList(ctx context.Context, req *emptypb.Empty) (*prot
 	bannerListResponse := proto.BannerListResponse{}
 
 	var banners []model.Banner
-	result := global.DB.Find(&banners)
+	result := global.DB.WithContext(ctx).Find(&banners)
+	if result.Error != nil {
+		return nil, catalogDBError(ctx, result.Error, "查询轮播图失败")
+	}
 	bannerListResponse.Total = int32(result.RowsAffected)
 
 	var bannerReponses []*proto.BannerResponse
@@ -65,19 +70,31 @@ func (g *GoodsServer) DeleteBanner(ctx context.Context, req *proto.BannerRequest
 
 //UpdateBanner 更新轮播图
 func (g *GoodsServer) UpdateBanner(ctx context.Context, req *proto.BannerRequest) (*emptypb.Empty, error) {
+	db := global.DB.WithContext(ctx)
 	var banner model.Banner
-	if result := global.DB.First(&banner, req.Id); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.NotFound, "轮播图不存在")
+	if err := db.First(&banner, req.Id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "轮播图不存在")
+		}
+		return nil, catalogDBError(ctx, err, "查询轮播图失败")
 	}
+	var fields []string
 	if req.Image != "" {
 		banner.Image = req.Image
+		fields = append(fields, "image")
 	}
 	if req.Index >= 0 {
 		banner.Index = req.Index
+		fields = append(fields, "index")
 	}
 	if req.Url != "" {
 		banner.Url = req.Url
+		fields = append(fields, "url")
 	}
-	global.DB.Save(&banner)
+	if len(fields) > 0 {
+		if err := db.Model(&banner).Select(fields).Updates(&banner).Error; err != nil {
+			return nil, catalogDBError(ctx, err, "更新轮播图失败")
+		}
+	}
 	return &emptypb.Empty{}, nil
 }

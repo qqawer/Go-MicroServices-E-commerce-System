@@ -87,3 +87,5 @@ AWS 现有库与旧 bootstrap 保持原样，没有执行线上 DDL，也没有�
 
 
 2026-09-29 历史订单：`tests/integration/order/history_test.go` 通过真实隔离 MySQL 和实际 gRPC 验证两名用户订单分别计数/分页、软删除排除、相同创建时间下按 ID 倒序，以及 10/1/0 条分页。RPC 的 COUNT/列表故障、取消与截止时间另由 `order_srv/handler/order_list_test.go` 验证，不再将查询失败当成空列表。此批未修改协议或数据库结构。
+
+2026-09-29 分类、品牌、轮播图更新：`goods_srv/handler/catalog_update_test.go` 验证查询、写入和事务提交失败不会被报告为成功或记录不存在，分类/轮播图列表区分读失败与正常空列表，并检查请求取消。`tests/integration/goods/catalog_update_test.go` 使用真实 MySQL + gRPC 验证分类开关关闭/重复关闭/开启、一级分类 NULL 父级及子分类层级保持、空品牌 Logo 补填、轮播图字段保存与重复更新。本批没有新增协议、表或迁移；登录错误与旧 Web 接口取消传播仍在后续修复批次。

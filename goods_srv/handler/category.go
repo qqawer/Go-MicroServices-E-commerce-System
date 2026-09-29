@@ -22,10 +22,12 @@ import (
 )
 
 // GetAllCategorysList 获取所有分类
-func (g *GoodsServer) GetAllCategorysList(context.Context, *emptypb.Empty) (*proto.CategoryListResponse, error) {
+func (g *GoodsServer) GetAllCategorysList(ctx context.Context, _ *emptypb.Empty) (*proto.CategoryListResponse, error) {
 	var categorys []model.Category
 	//通过反向查询，查一级内目，查二级内目，查三级内目
-	global.DB.Where(&model.Category{Level: 1}).Preload("SubCategory.SubCategory").Find(&categorys)
+	if err := global.DB.WithContext(ctx).Where(&model.Category{Level: 1}).Preload("SubCategory.SubCategory").Find(&categorys).Error; err != nil {
+		return nil, catalogDBError(ctx, err, "查询分类失败")
+	}
 
 	//json序列化
 	b, _ := json.Marshal(&categorys)
@@ -121,26 +123,36 @@ func (g *GoodsServer) DeleteCategory(c context.Context, req *proto.DeleteCategor
 
 // UpdateCategory 更新分类
 func (g *GoodsServer) UpdateCategory(c context.Context, req *proto.CategoryInfoRequest) (*empty.Empty, error) {
+	db := global.DB.WithContext(c)
 	var category model.Category
-	if result := global.DB.First(&category, req.Id); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.NotFound, "商品分类不存在")
+	if err := db.First(&category, req.Id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "商品分类不存在")
+		}
+		return nil, catalogDBError(c, err, "查询分类失败")
 	}
+	fields := []string{"is_tab"}
 	if req.Name != "" {
 		category.Name = req.Name
+		fields = append(fields, "name")
 	}
 
 	if req.ParentCategory != 0 {
 		//类目级别
 		category.ParentCategoryID = req.ParentCategory
+		fields = append(fields, "parent_category_id")
 	}
 	if req.Level != 0 {
 		category.Level = req.Level
+		fields = append(fields, "level")
 	}
-	if req.IsTab {
-		category.IsTab = req.IsTab
-	}
+	// The update form requires is_tab; false is an explicit value.
+	category.IsTab = req.IsTab
 
-	global.DB.Save(&category)
+	// Only submitted columns are written, preserving a root's NULL parent.
+	if err := db.Model(&category).Select(fields).Updates(&category).Error; err != nil {
+		return nil, categoryDBError(c, err, "更新分类失败")
+	}
 
 	return &empty.Empty{}, nil
 }
