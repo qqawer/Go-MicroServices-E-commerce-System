@@ -41,36 +41,32 @@ func ModelToRsponse(brand model.Brands) proto.BrandInfoResponse {
 // 品牌
 
 //BrandList 获取品牌列表
-	func (g *GoodsServer)BrandList(ctx context.Context, req *proto.BrandFilterRequest) (*proto.BrandListResponse, error){
-		
-		brandList:=proto.BrandListResponse{}
-		brandInfo:=[]*proto.BrandInfoResponse{}
-		brands:=[]model.Brands{}
-
-		result:=global.DB.Find(&brands)
-		if result.Error != nil {
-		return nil, result.Error
-	}
-
+func (g *GoodsServer) BrandList(ctx context.Context, req *proto.BrandFilterRequest) (*proto.BrandListResponse, error) {
+	db := global.DB.WithContext(ctx)
 	var total int64
-	global.DB.Model(&brands).Count(&total)
-
-	global.DB.Scopes(Paginate(int(req.Pages), int(req.PagePerNums))).Find(&brands)
-		for _,brand:=range brands{
-			brandInfo=append(brandInfo,&proto.BrandInfoResponse{
-				Id:brand.ID,
-				Name:brand.Name,
-				Logo:brand.Logo,
-			})
-		}
-		brandList.Total = int32(total)
-		brandList.Data = brandInfo
-		return &brandList, nil
+	if err := db.Model(&model.Brands{}).Count(&total).Error; err != nil {
+		return nil, catalogDBError(ctx, err, "查询品牌失败")
 	}
-	//CreateBrand 新增品牌
+	var brands []model.Brands
+	if err := db.Order("id").Scopes(Paginate(int(req.Pages), int(req.PagePerNums))).Find(&brands).Error; err != nil {
+		return nil, catalogDBError(ctx, err, "查询品牌失败")
+	}
+	brandInfo := make([]*proto.BrandInfoResponse, 0, len(brands))
+	for _, brand := range brands {
+		brandInfo = append(brandInfo, &proto.BrandInfoResponse{Id: brand.ID, Name: brand.Name, Logo: brand.Logo})
+	}
+	return &proto.BrandListResponse{Total: int32(total), Data: brandInfo}, nil
+}
+
+//CreateBrand 新增品牌
 func (g *GoodsServer) CreateBrand(ctx context.Context, req *proto.BrandRequest) (*proto.BrandInfoResponse, error) {
-	if result := global.DB.Where("name=?", req.Name).First(&model.Brands{}); result.RowsAffected == 1 {
+	db := global.DB.WithContext(ctx)
+	err := db.Where("name=?", req.Name).First(&model.Brands{}).Error
+	if err == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "品牌已存在")
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, catalogDBError(ctx, err, "查询品牌失败")
 	}
 
 	//if res := global.DB.First(&model.Brands{}); res.RowsAffected == 1 {
@@ -81,9 +77,9 @@ func (g *GoodsServer) CreateBrand(ctx context.Context, req *proto.BrandRequest) 
 	brand.Name = req.Name
 	brand.Logo = req.Logo
 
-	result := global.DB.Create(&brand)
+	result := db.Create(&brand)
 	if result.Error != nil {
-		return nil, status.Errorf(codes.Internal, result.Error.Error())
+		return nil, catalogDBError(ctx, result.Error, "创建品牌失败")
 	}
 	BrandResponse := ModelToRsponse(brand)
 	return &BrandResponse, nil
@@ -91,7 +87,11 @@ func (g *GoodsServer) CreateBrand(ctx context.Context, req *proto.BrandRequest) 
 
 //DeleteBrand 删除品牌
 func (g *GoodsServer) DeleteBrand(ctx context.Context, req *proto.BrandRequest) (*emptypb.Empty, error) {
-	if result := global.DB.Delete(&model.Brands{}, req.Id); result.RowsAffected == 0 {
+	result := global.DB.WithContext(ctx).Delete(&model.Brands{}, req.Id)
+	if result.Error != nil {
+		return nil, catalogDBError(ctx, result.Error, "删除品牌结果未确认，请查询后重试")
+	}
+	if result.RowsAffected == 0 {
 		return nil, status.Errorf(codes.NotFound, "品牌不存在")
 	}
 	return &emptypb.Empty{}, nil

@@ -41,16 +41,23 @@ func (g *GoodsServer) BannerList(ctx context.Context, req *emptypb.Empty) (*prot
 
 //CreateBanner 添加轮播图
 func (g *GoodsServer) CreateBanner(ctx context.Context, req *proto.BannerRequest) (*proto.BannerResponse, error) {
-	if result := global.DB.First(model.Banner{}, req.Id); result.RowsAffected == 1 {
-		return nil, status.Errorf(codes.InvalidArgument, "轮播图已存在")
+	db := global.DB.WithContext(ctx)
+	if req.Id != 0 {
+		err := db.First(&model.Banner{}, req.Id).Error
+		if err == nil {
+			return nil, status.Errorf(codes.InvalidArgument, "轮播图已存在")
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, catalogDBError(ctx, err, "查询轮播图失败")
+		}
 	}
 	var Banner model.Banner
 	Banner.ID = req.Id
 	Banner.Index = req.Index
 	Banner.Image = req.Image
 	Banner.Url = req.Url
-	if result := global.DB.Create(&Banner); result.Error != nil {
-		return nil, status.Errorf(codes.Internal, result.Error.Error())
+	if result := db.Create(&Banner); result.Error != nil {
+		return nil, catalogDBError(ctx, result.Error, "创建轮播图失败")
 	}
 	return &proto.BannerResponse{
 		Id:    Banner.ID,
@@ -62,7 +69,11 @@ func (g *GoodsServer) CreateBanner(ctx context.Context, req *proto.BannerRequest
 
 //DeleteBanner 删除轮播图
 func (g *GoodsServer) DeleteBanner(ctx context.Context, req *proto.BannerRequest) (*emptypb.Empty, error) {
-	if result := global.DB.Delete(&model.Banner{}, req.Id); result.RowsAffected == 0 {
+	result := global.DB.WithContext(ctx).Delete(&model.Banner{}, req.Id)
+	if result.Error != nil {
+		return nil, catalogDBError(ctx, result.Error, "删除轮播图结果未确认，请查询后重试")
+	}
+	if result.RowsAffected == 0 {
 		return nil, status.Errorf(codes.NotFound, "轮播图不存在")
 	}
 	return &emptypb.Empty{}, nil

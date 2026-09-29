@@ -42,8 +42,12 @@ func (g *GoodsServer) GetSubCategory(c context.Context, req *proto.CategoryListR
 	var category model.Category
 	//查询分类是否存在
 	//查询当前目录
-	if result := global.DB.Find(&category, req.Id); result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.NotFound, "分类不存在")
+	db := global.DB.WithContext(c)
+	if err := db.First(&category, req.Id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "分类不存在")
+		}
+		return nil, catalogDBError(c, err, "查询分类失败")
 	}
 	categoryListResponse.Info = &proto.CategoryInfoResponse{
 		Id:             category.ID,
@@ -60,7 +64,9 @@ func (g *GoodsServer) GetSubCategory(c context.Context, req *proto.CategoryListR
 	if category.Level == 1 {
 		perloads = "SubCategory.SubCategory"
 	}
-	global.DB.Where(&model.Category{ParentCategoryID: req.Id}).Preload(perloads).Find(&subCategorys)
+	if err := db.Where(&model.Category{ParentCategoryID: req.Id}).Preload(perloads).Find(&subCategorys).Error; err != nil {
+		return nil, catalogDBError(c, err, "查询子分类失败")
+	}
 	for _, subCategory := range subCategorys {
 		categoryInfoResponse = append(categoryInfoResponse, &proto.CategoryInfoResponse{
 			Id:             subCategory.ID,
@@ -115,7 +121,11 @@ func (s *GoodsServer) CreateCategory(ctx context.Context, req *proto.CategoryInf
 
 // DeleteCategory 删除分类
 func (g *GoodsServer) DeleteCategory(c context.Context, req *proto.DeleteCategoryRequest) (*empty.Empty, error) {
-	if result := global.DB.Delete(&model.Category{}, req.Id); result.RowsAffected == 0 {
+	result := global.DB.WithContext(c).Delete(&model.Category{}, req.Id)
+	if result.Error != nil {
+		return nil, catalogDBError(c, result.Error, "删除分类结果未确认，请查询后重试")
+	}
+	if result.RowsAffected == 0 {
 		return nil, status.Errorf(codes.NotFound, "商品分类不存在")
 	}
 	return &empty.Empty{}, nil
