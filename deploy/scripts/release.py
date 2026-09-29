@@ -12,6 +12,7 @@ import tempfile
 
 from capacity import check_disk, check_mq_write
 from image_retention import prune
+from release_diagnostics import save_failure_diagnostics
 
 ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {
@@ -26,6 +27,15 @@ def env_file(path):
 def run(args, capture=False):
     return subprocess.run(args, check=True, text=True, stdout=subprocess.PIPE if capture else None,
                           timeout=60 if capture else 600)
+
+def start_services(compose, services):
+    # Order startup blocks on goods/inventory discovery. Replacing all RPCs in
+    # parallel can exhaust its connection deadline before those services start.
+    dependencies = [service for service in services if service != 'order-srv']
+    waves = [dependencies, ['order-srv']] if 'order-srv' in services else [services]
+    for wave in waves:
+        if wave:
+            run(compose + ['up', '-d', '--no-deps', '--pull', 'never', '--wait', '--wait-timeout', '180', *wave])
 
 def main():
     preloaded = len(sys.argv) == 4 and sys.argv[3] == '--preloaded'
@@ -122,14 +132,19 @@ def main():
                         raise ValueError('Unmanaged existing application containers found; adopt them explicitly first')
                     old_services.append(service)
             try:
-                run(compose(new_env) + ['up', '-d', '--no-deps', '--pull', 'never', '--wait', '--wait-timeout', '180', *services])
+                start_services(compose(new_env), services)
             except subprocess.SubprocessError:
+                try:
+                    directory = save_failure_diagnostics(compose(new_env), services, state, group, revision)
+                    print(f'Private deployment diagnostics saved: {directory}', file=sys.stderr)
+                except (ValueError, OSError, subprocess.SubprocessError) as error:
+                    print(f'WARNING: diagnostics unavailable ({type(error).__name__}); continuing rollback.', file=sys.stderr)
                 print('Deployment failed. Restoring the previous release.', file=sys.stderr)
                 new_services = [service for service in services if service not in old_services]
                 if new_services:
                     run(compose(new_env) + ['rm', '-sf', *new_services])
                 if old_services:
-                    run(compose(old_env) + ['up', '-d', '--no-deps', '--wait', '--wait-timeout', '180', *old_services])
+                    start_services(compose(old_env), old_services)
                 raise
             # Commit desired state only after Compose reports all services healthy.
             os.replace(new_env, release_file)

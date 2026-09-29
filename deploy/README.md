@@ -169,7 +169,11 @@ SSH 的安全组必须允许 Actions runner 到达服务器；只允许 Mac 的 
 
 需要主动回退时，将旧 JSON 中的 `images` 对象、对应 `revision` 和 `group` 填到 Jenkins 任务参数后构建。常规版本需保留 GHCR 历史镜像；预导入版本需保留宿主机 image ID，并设置 PRELOADED=true。回退不会回退数据库结构、数据或 Nacos 配置。
 
-启动健康检查失败时，脚本尝试恢复以前存在的服务；首次部署没有旧容器时，只移除这次新建的应用容器。恢复失败会保持任务失败，需要检查日志。主机宕机、强制杀进程或 Jenkins 超时中止可能打断恢复，需要人工核对；单机 Compose 更新也会有短暂中断。
+RPC 发布和回滚先等待 user/goods/inventory 健康，再启动 order，避免订单服务的 5 秒下游连接期限被并行重建耗尽。Web 仍按整组启动；健康检查参数保持原值。这只处理本发布脚本的启动顺序，不保证整机重启时所有依赖同步就绪。
+
+启动健康检查失败时，脚本先用最多约 20 秒保存 `runtime/state/failed-<组>-<提交前12位>-*/`，再尝试恢复以前存在的服务；首次部署没有旧容器时，只移除这次新建的应用容器。现场包含容器退出码、OOM 标志、重启次数、健康探测结果、最近 200 行日志（每文件最多 262144 字符）以及内存计数和 Docker stats。目录权限 700、文件 600，不采集环境变量或挂载配置；应用日志仍可能含敏感信息，只保存在服务器，Jenkins 仅输出路径。采集失败或超时不会阻止回滚，也不会把失败版本记为成功。需要同时同步 `scripts/release.py` 和 `scripts/release_diagnostics.py` 才能启用。
+
+恢复失败会保持任务失败，需要检查日志。主机宕机、强制杀进程或 Jenkins 超时中止可能打断保存现场和恢复，需要人工核对；单机 Compose 更新也会有短暂中断。
 
 查看基础设施日志：`sudo bash scripts/stack.sh logs nacos`；停止基础设施：`sudo bash scripts/stack.sh stop`。如需查看应用日志，使用 `.env` 和 `runtime/state/images.env` 两份 env 文件配合 `compose.apps.yaml`。日志和配置可能含业务敏感信息，不要公开粘贴。
 
