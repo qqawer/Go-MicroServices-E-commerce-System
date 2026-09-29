@@ -1,5 +1,5 @@
 # Mac 直连 AWS Nacos；MXSHOP_DEBUG=true 使用 dev 分组。
-host: '98.83.120.128'
+host: '54.162.202.24'
 port: 8848
 namespace: 'b8cbecc7-537f-4507-b2d2-3e18dbd787c1'
 user: 'nacos'

@@ -1,5 +1,13 @@
 # AWS 部署记录 · 2026-09-17 RPC 首次发布与 Mac 联调
 
+## 2026-09-29 实例降配与公网地址更新
+
+原实例 `i-06a10bd902160fade` 已从 `t2.large` 切换为 `t3.medium`（2 vCPU、4 GiB），保留 CPU 积分 `standard` 模式。仍使用原 20 GiB gp3 卷和全部 Docker 数据卷；本次未扩容磁盘。停止后的磁盘快照为 `snap-0f19c01097e2e3844`，本机另有私密数据库与配置备份。
+
+当前公网地址为 **`54.162.202.24`**，私网仍是 `172.31.40.8`。实例没有弹性 IP，停机后再启动仍可能换地址；`98.83.120.128`、`54.237.231.158` 均已不用于本项目当前连接。源码 debug/pro YAML、三个 Web 的 Nacos local RPC/Redis 地址、order-web 的 local/dev 支付回调已同步更新，密钥和业务数据保留。原安全组未修改，Mac 的 `42.61.2.190/32` 和 `137.132.26.227/32` 来源规则仍在。
+
+Nacos 当前入口：<http://54.162.202.24:8848/nacos/>。Consul 和 Jenkins 仍只绑定服务器回环，管理时使用下方 SSH 隧道。以下旧日期章节中的资源、地址和状态为历史快照。
+
 ## 2026-09-24 公网通知连通与沙箱启用
 
 用户在 AWS 增加 HTTP/TCP 80 来源 `0.0.0.0/0` 后，已从 Mac 直连验证入口可达。Nacos `orders-srv.json / dev`、`order-web.json / local,dev` 的 `alipay.enabled` 已改为 true，订单 RPC `rocket.mode=alipay`；配置私有备份 `runtime/state/before-enable-alipay-20260924T062825Z`。仅重启云端 order-srv/order-web，实际代码镜像未变；七个应用健康、Consul RPC passing。公网无签名通知返回400 failure，普通路径404、回调GET405；支付表、订单表、库存操作表均仍0条，没有创建或支付测试订单。本机order-web需要使用者重启；下一步创建新订单并完成真实沙箱付款/成功通知验收。
@@ -86,7 +94,7 @@ Mac 上的 SSH 私钥为 `/Users/outsider/Downloads/Golang_Development/grpctest.
 
 ```bash
 ssh -i /Users/outsider/Downloads/Golang_Development/grpctest.pem \
-  -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes ubuntu@98.83.120.128
+  -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes ubuntu@54.162.202.24
 ```
 
 首次连接的主机密钥采用 SSH 首次信任记录在本机 known_hosts 中；此后连接强制匹配。2026-09-17 已通过旧主机密钥严格校验新公网 IP，确认密钥一致，实测私网 IP 为 `172.31.40.8`。尚未通过 AWS 控制台独立核验指纹。
@@ -106,7 +114,7 @@ ssh -i /Users/outsider/Downloads/Golang_Development/grpctest.pem \
   -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
   -N -L 127.0.0.1:18080:127.0.0.1:8080 \
   -L 127.0.0.1:18848:127.0.0.1:8848 \
-  -L 127.0.0.1:18500:127.0.0.1:8500 ubuntu@98.83.120.128
+  -L 127.0.0.1:18500:127.0.0.1:8500 ubuntu@54.162.202.24
 ```
 
 ## 已完成

@@ -1,5 +1,7 @@
 # 支付宝沙箱通知入口
 
+2026-09-29：实例切换为 `t3.medium` 后，当前公网地址为 `54.162.202.24`；Nacos 的 local/dev 通知地址已更新为 `http://54.162.202.24/g/v1/pay/alipay/notify`。以下带日期的段落保留历史记录，当前连接使用新地址。
+
 本入口只代理 `POST /g/v1/pay/alipay/notify`，其他路径返回 404，其他方法返回 405。三个 Web 的 8021–8023 仍绑定服务器回环地址；Mac 继续使用 `local` 分组运行自己的 Web。
 
 ```text
@@ -7,7 +9,7 @@
        → order-web:8023 → orders-srv → 验签/金额商户校验/数据库事务
 ```
 
-当前通知地址为 `http://98.83.120.128/g/v1/pay/alipay/notify`，`return_url` 留空。2026-09-24 用户增加 HTTP/TCP80 来源0.0.0.0/0后，Mac公网请求已成功到达通知接口。两端支付已启用、订单模式alipay，云端订单RPC/Web已重启；无签名POST返回400 failure、GET405、其他路径404。真实付款验收仍待完成。现阶段是学习用沙箱 HTTP 入口；域名/TLS 后续另行配置。不要用 RPC 的50054或Mac localhost作为通知地址。
+当前通知地址为 `http://54.162.202.24/g/v1/pay/alipay/notify`，`return_url` 留空。2026-09-24 用户增加 HTTP/TCP80 来源0.0.0.0/0后，Mac公网请求已成功到达通知接口。两端支付已启用、订单模式alipay，云端订单RPC/Web已重启；无签名POST返回400 failure、GET405、其他路径404。真实付款验收仍待完成。现阶段是学习用沙箱 HTTP 入口；域名/TLS 后续另行配置。不要用 RPC 的50054或Mac localhost作为通知地址。
 
 ## 启动
 
@@ -30,13 +32,13 @@ AWS 安全组还须允许支付宝从公网到达 TCP 80；只允许 Mac 当前 
 
 ```bash
 # 非回调路径 404；回调的 GET 405。
-curl -i http://98.83.120.128/
-curl -i http://98.83.120.128/g/v1/pay/alipay/notify
+curl -i http://54.162.202.24/
+curl -i http://54.162.202.24/g/v1/pay/alipay/notify
 
 # 无签名通知不得修改订单：关闭支付时 503；启用后 400 failure。
 curl -i -H 'Content-Type: application/x-www-form-urlencoded' \
   --data 'out_trade_no=connectivity_probe' \
-  http://98.83.120.128/g/v1/pay/alipay/notify
+  http://54.162.202.24/g/v1/pay/alipay/notify
 ```
 
 公网链路通过且沙箱凭据有效后，才开启 `orders-srv.json / dev` 和 `order-web.json / local,dev` 的 `alipay.enabled`，并把订单 RPC 的 `rocket.mode` 切为 `alipay`。配置在启动时读取，需重启订单 RPC、云端订单 Web；本机 Web 由使用者重启。旧 demo 订单不会变成可支付订单，需要重新下单测试。

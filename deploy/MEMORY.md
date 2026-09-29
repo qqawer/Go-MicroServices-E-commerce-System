@@ -1,6 +1,6 @@
 # 单机学习环境的内存预算
 
-这组配置用于当前小数据量、低并发的单机环境，目的是为后续评估 4 GiB 实例留出余量。实际调整和验证发生在 8 GiB 的 `t2.large` 上；本次没有变更 EC2 规格，不能据此认定任意业务负载都能在 4 GiB 上运行。
+这组配置用于当前小数据量、低并发的单机环境，目的是为后续评估 4 GiB 实例留出余量。2026-09-28 的调整和验证发生在 8 GiB 的 `t2.large` 上；9 月 29 日的实际 4 GiB 切换记录见文末。两次有限验证均不能证明任意业务负载都能在 4 GiB 上运行。
 
 ## 配置改动
 
@@ -50,3 +50,12 @@ done
 本次先在线试调 MySQL 缓冲池并核对查询，再重建 MySQL 让容器启动参数与 Compose 一致；没有留下 `SET PERSIST` 的额外覆盖。原数据卷保留。回退时恢复服务器备份 `runtime/state/before-memory-tuning-20260928-compose.yaml`，对上述服务逐个重建；禁止通过删除卷来回退。
 
 依据：[Nacos JVM 环境变量](https://www.nacos.io/zh-cn/docs/quick-start-docker.html)、[Jenkins 内存需求](https://www.jenkins.io/doc/book/scaling/hardware-recommendations/)、[MySQL 缓冲池在线调整](https://dev.mysql.com/doc/refman/8.0/en/innodb-buffer-pool-resize.html)。
+
+
+## 2026-09-29：实际切换到 4 GiB
+
+同一 EC2 实例已切换为 `t3.medium`（2 vCPU、4 GiB），系统可用物理内存约 3831 MiB。沿用上述 JVM/MySQL 配置、CPU 积分 standard 模式和原 20 GiB gp3 磁盘，没有添加 swap。切换前停止应用及中间件并创建磁盘快照；启动后按依赖顺序恢复服务。
+
+15 个容器均已健康，四个 RPC 的 Consul 检查 passing；RocketMQ 专用健康主题实际写入返回 SEND_OK。已付款订单 2 仍为 TRADE_SUCCESS、金额 4490 分，商品 421 库存仍为 99/version 3。Mac 用更新后的源码 YAML 启动 goods-web，商品列表和详情均成功读取。
+
+本次为学习环境迁移验证。4 GiB 下的内存观测保存在服务器 `runtime/state/memory-t3-20260929.jsonl`，查询样本保存在 `runtime/state/http-t3-20260929.json`；它们不是吞吐量上限或长期稳定性证明。当前公网地址与恢复入口见 [AWS 部署记录](DEPLOYED_AWS.md#2026-09-29-实例降配与公网地址更新)。

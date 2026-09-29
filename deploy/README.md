@@ -66,7 +66,7 @@ sudo python3 scripts/configure-nacos.py --apply
 
 RPC 容器使用镜像提供的 `grpc_health_probe`，检查 `127.0.0.1:50051`–`50054`；Web 容器使用 Alpine 的 `wget` 检查 `127.0.0.1:8021`–`8023` 的 `/health`。这些是容器内自检。Consul 从自己的容器发起检查，使用下表对应的 RPC 容器 DNS 名及端口；两者应指向同一服务，但不能混用各自的 `127.0.0.1`。
 
-源码 debug/pro YAML 已按用户要求改为 Mac 直连 `98.83.120.128:8848`。Mac Web 默认 debug 选择已有的 local 分组，RPC 源码 debug 仍读取 dev；pro 分组仍需另行准备。云端容器继续读取挂载的 runtime 配置，通过 Docker 服务名访问中间件。Mac 的 local 配置已使用 AWS 公网 RPC/Redis 地址，详见 Web 仓库 LOCAL_DEVELOPMENT.md。
+源码 debug/pro YAML 已按用户要求改为 Mac 直连 `54.162.202.24:8848`。Mac Web 默认 debug 选择已有的 local 分组，RPC 源码 debug 仍读取 dev；pro 分组仍需另行准备。云端容器继续读取挂载的 runtime 配置，通过 Docker 服务名访问中间件。Mac 的 local 配置已使用 AWS 公网 RPC/Redis 地址，详见 Web 仓库 LOCAL_DEVELOPMENT.md。
 
 如果需要浏览器直接访问 Nacos，在服务器 `.env` 设置 `NACOS_HTTP_BIND_ADDRESS=0.0.0.0`，并在 AWS 安全组中仅向指定客户端公网 IPv4 `/32` 放行 TCP 8848，然后执行 `sudo docker compose --env-file .env -f compose.yaml --profile ci up -d --no-deps --wait nacos`。Mac 直连 Nacos Go SDK v2 还需在 `.env` 设置 `NACOS_GRPC_BIND_ADDRESS=0.0.0.0`，并仅向客户端 `/32` 放行 TCP 9848；SDK 根据 YAML 中的 8848 自动加 1000 连接该端口。历史实例的设置记录见 `DEPLOYED_AWS.md`；仓库默认仍将 8848/9848 绑定回环地址，本轮未更改线上设置。RPC/Redis 的可选公网映射见第 3 节；云端 Go 容器继续通过 Docker 服务名连接。
 
@@ -93,7 +93,7 @@ RPC 容器使用镜像提供的 `grpc_health_probe`，检查 `127.0.0.1:50051`�
 cd /opt/grpctest/deploy
 sudo python3 scripts/bootstrap-demo-db.py --goods-sql /tmp/grpctest_goods_srv.sql
 sudo python3 scripts/bootstrap-demo-db.py --goods-sql /tmp/grpctest_goods_srv.sql --apply
-sudo python3 scripts/configure-local-web.py --host 98.83.120.128
+sudo python3 scripts/configure-local-web.py --host 54.162.202.24
 ```
 
 第一条只做预检。导入仅接受校验过的原始 SQL，剔除五条 DROP；配合 mysql/02-business-schema.sql 创建当前 RPC 模型所需表并设置 420 件商品各 100 库存。完成标记在 runtime/state/demo-db-bootstrap.json。再次执行保持原数据；没有标记的非空库拒绝导入。中途失败需检查已创建的表，不自动清空重试。不要编辑已应用的基线来充当未来迁移。

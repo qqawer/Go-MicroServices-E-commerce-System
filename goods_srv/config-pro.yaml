@@ -1,5 +1,5 @@
 # 云端目前仅有 dev 分组；使用 pro 前须准备对应分组配置。
-host: '98.83.120.128'
+host: '54.162.202.24'
 port: 8848
 namespace: '80f74565-a2d2-4cb1-9820-cebc8d97f58e'
 user: 'nacos'
