@@ -93,3 +93,5 @@ AWS 现有库与旧 bootstrap 保持原样，没有执行线上 DDL，也没有�
 2026-09-30 查询错误与取消：`user_srv/handler/mobile_lookup_test.go` 区分正常登录查询、真实查无用户、数据库故障和请求取消/超时，包括执行中的 SQL 被期限中断。`goods_srv/handler/goods_legacy_read_test.go` 验证旧商品列表的分类查询、计数、分页错误及取消传播；旧管理查询仍保留全部上架/库存准备状态，不改成商城过滤。既有正式构建、race 回归及真实 MySQL + gRPC 集成继续覆盖正常流程；本批无协议或数据结构变化。
 
 2026-09-30 mxshop 对照复查补漏：`goods_srv/handler/catalog_read_delete_test.go` 覆盖品牌计数/分页、子分类查询/关联预加载、品牌/分类/轮播图删除的 SQL 与提交错误，以及取消、期限、正常空结果；品牌/轮播图创建也验证取消及查重/写入/提交失败。品牌分页不再预读全表，失败不返回遗留数据；删除先检查 Error 再判断 RowsAffected。此批无表、协议或迁移变化，不包含压测或启用限流。
+
+2026-09-30 管理员用户列表：`user_srv/handler/user_list_test.go` 验证 COUNT 与分页错误均返回失败、取消/超时传递、总数与偏移溢出以及稳定排序；`tests/integration/user/list_test.go` 在隔离 MySQL + gRPC 中验证逐页读取、总数和软删除过滤。原先全表读取后分页失败仍返回旧用户数据的路径已移除；0 使用默认 1/10、每页最多 100 的兼容行为保留。

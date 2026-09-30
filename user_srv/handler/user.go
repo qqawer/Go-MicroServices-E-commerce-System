@@ -6,6 +6,7 @@ import (
 	"grpctest/user_srv/model/proto"
 	model "grpctest/user_srv/model/user"
 	"grpctest/user_srv/utils"
+	"math"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -35,16 +36,38 @@ func ModelToResponse(user model.User) *proto.UserInfoResponse {
 }
 
 func (s *UserServer) GetUserList(ctx context.Context, req *proto.PageInfo) (*proto.UserListResponse, error) {
-	//获取用户列表
-	var users []model.User
-	result := global.DB.Find(&users)
-	if result.Error != nil {
-		return nil, result.Error
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
 	}
-	rsp := &proto.UserListResponse{}
-	rsp.Total = int32(result.RowsAffected)
-
-	global.DB.Scopes(utils.Paginate(int(req.Pn), int(req.PSize))).Find(&users)
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "用户分页参数无效")
+	}
+	page, size := int64(req.Pn), int64(req.PSize)
+	if page == 0 {
+		page = 1
+	}
+	if size == 0 {
+		size = 10
+	} else if size > 100 {
+		size = 100
+	}
+	offset := (page - 1) * size
+	if offset > math.MaxInt32 {
+		return nil, status.Error(codes.InvalidArgument, "用户分页参数无效")
+	}
+	query := global.DB.WithContext(ctx).Model(&model.User{})
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, userListReadError(ctx)
+	}
+	if total > math.MaxInt32 {
+		return nil, status.Error(codes.OutOfRange, "用户总数超出支持范围")
+	}
+	var users []model.User
+	if err := query.Order("id ASC").Offset(int(offset)).Limit(int(size)).Find(&users).Error; err != nil {
+		return nil, userListReadError(ctx)
+	}
+	rsp := &proto.UserListResponse{Total: int32(total)}
 
 	for _, user := range users {
 		userInfoRsp := ModelToResponse(user)
@@ -52,6 +75,13 @@ func (s *UserServer) GetUserList(ctx context.Context, req *proto.PageInfo) (*pro
 	}
 	return rsp, nil
 }
+func userListReadError(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return status.FromContextError(err).Err()
+	}
+	return status.Error(codes.Unavailable, "用户列表暂时无法读取")
+}
+
 func (s *UserServer) GetUserByMobile(ctx context.Context, req *proto.MobileRequest) (*proto.UserInfoResponse, error) {
 	//通过手机号查询用户
 	var user model.User
