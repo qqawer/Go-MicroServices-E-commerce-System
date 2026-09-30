@@ -29,7 +29,7 @@ type Banner struct {
 	BaseModel
 	Image string `gorm:"type:varchar(200);not null"`
 	Url   string `gorm:"type:varchar(200);not null"`
-	Index int32  `gorm:"type:int;not null;default:1"`
+	Index int32  `gorm:"type:int;not null"`
 }
 
 type Goods struct {

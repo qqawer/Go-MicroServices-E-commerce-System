@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 //BannerList 获取轮播图列表
@@ -18,7 +19,10 @@ func (g *GoodsServer) BannerList(ctx context.Context, req *emptypb.Empty) (*prot
 	bannerListResponse := proto.BannerListResponse{}
 
 	var banners []model.Banner
-	result := global.DB.WithContext(ctx).Find(&banners)
+	result := global.DB.WithContext(ctx).Order(clause.OrderBy{Columns: []clause.OrderByColumn{
+		{Column: clause.Column{Name: "index"}},
+		{Column: clause.Column{Name: "id"}},
+	}}).Find(&banners)
 	if result.Error != nil {
 		return nil, catalogDBError(ctx, result.Error, "查询轮播图失败")
 	}

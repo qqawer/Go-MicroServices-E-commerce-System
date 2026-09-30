@@ -97,3 +97,5 @@ AWS 现有库与旧 bootstrap 保持原样，没有执行线上 DDL，也没有�
 2026-09-30 管理员用户列表：`user_srv/handler/user_list_test.go` 验证 COUNT 与分页错误均返回失败、取消/超时传递、总数与偏移溢出以及稳定排序；`tests/integration/user/list_test.go` 在隔离 MySQL + gRPC 中验证逐页读取、总数和软删除过滤。原先全表读取后分页失败仍返回旧用户数据的路径已移除；0 使用默认 1/10、每页最多 100 的兼容行为保留。
 
 2026-09-30 商品删除：`goods_srv/handler/catalog_read_delete_test.go` 的删除故障矩阵加入商品，覆盖事务开始、SQL、提交错误、缺失商品、成功、取消和超时，另验证无效 ID 不执行 SQL。`tests/integration/goods/rpc_test.go` 在隔离数据库的回滚事务内验证只软删除指定商品、取消前不删除、重复删除返回 NotFound、相邻商品仍可读取；不在 AWS 上删除现有商品。提交/网络错误不能证明事务未提交，必须查询实际状态确认。
+
+2026-09-30 轮播图排序：`goods_srv/handler/banner_index_test.go` 验证创建时显式 index=0 不被 GORM 改成默认 1，列表按 index 升序、同值按 ID 升序。`tests/integration/goods/banner_test.go` 在隔离 MySQL + gRPC 中创建 5/0/2/0 四张测试轮播图，核对数据库保存值、排序和更新为 0 后的位置；事务结束回滚。仅移除模型的 default 标签以使 INSERT 明确写入 0，没有修改现有 SQL 默认值、迁移或线上数据；需要同步更新 goods-web 才能通过 HTTP 提交 index=0。
