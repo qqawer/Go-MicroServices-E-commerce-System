@@ -1,5 +1,11 @@
 # AWS 部署记录 · 2026-09-17 RPC 首次发布与 Mac 联调
 
+## 2026-09-30 再次启动后的公网地址
+
+同一实例 `i-06a10bd902160fade` 的公网地址现为 **`54.80.49.171`**，私网仍为 `172.31.40.8`，配置仍为 t3.medium。上次公网 `54.162.202.24` 已失效。更新源码 Nacos YAML、Nacos local 的 RPC/Redis 地址及 order-web local/dev 的支付通知地址；保持密钥、namespace、group、Docker 内网地址和安全组规则。Nacos 入口为 <http://54.80.49.171:8848/nacos/>。
+
+以下 9 月 29 日内容为历史记录。
+
 ## 2026-09-29 实例降配与公网地址更新
 
 原实例 `i-06a10bd902160fade` 已从 `t2.large` 切换为 `t3.medium`（2 vCPU、4 GiB），保留 CPU 积分 `standard` 模式。仍使用原 20 GiB gp3 卷和全部 Docker 数据卷；本次未扩容磁盘。停止后的磁盘快照为 `snap-0f19c01097e2e3844`，本机另有私密数据库与配置备份。
@@ -94,7 +100,7 @@ Mac 上的 SSH 私钥为 `/Users/outsider/Downloads/Golang_Development/grpctest.
 
 ```bash
 ssh -i /Users/outsider/Downloads/Golang_Development/grpctest.pem \
-  -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes ubuntu@54.162.202.24
+  -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes ubuntu@54.80.49.171
 ```
 
 首次连接的主机密钥采用 SSH 首次信任记录在本机 known_hosts 中；此后连接强制匹配。2026-09-17 已通过旧主机密钥严格校验新公网 IP，确认密钥一致，实测私网 IP 为 `172.31.40.8`。尚未通过 AWS 控制台独立核验指纹。
@@ -114,7 +120,7 @@ ssh -i /Users/outsider/Downloads/Golang_Development/grpctest.pem \
   -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
   -N -L 127.0.0.1:18080:127.0.0.1:8080 \
   -L 127.0.0.1:18848:127.0.0.1:8848 \
-  -L 127.0.0.1:18500:127.0.0.1:8500 ubuntu@54.162.202.24
+  -L 127.0.0.1:18500:127.0.0.1:8500 ubuntu@54.80.49.171
 ```
 
 ## 已完成
