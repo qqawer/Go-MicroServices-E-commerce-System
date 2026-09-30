@@ -108,7 +108,7 @@ func TestSubCategoryChecksEveryReadAndCancellation(t *testing.T) {
 }
 
 func TestCatalogDeletesCheckDatabaseOutcome(t *testing.T) {
-	for _, entity := range []string{"brand", "banner", "category"} {
+	for _, entity := range []string{"brand", "banner", "category", "goods"} {
 		for _, outcome := range []string{"begin", "write", "commit", "missing", "success", "canceled", "deadline"} {
 			t.Run(entity+"/"+outcome, func(t *testing.T) {
 				mock := catalogDatabase(t)
@@ -157,11 +157,23 @@ func TestCatalogDeletesCheckDatabaseOutcome(t *testing.T) {
 					_, err = server.DeleteBanner(ctx, &proto.BannerRequest{Id: 7})
 				case "category":
 					_, err = server.DeleteCategory(ctx, &proto.DeleteCategoryRequest{Id: 7})
+				case "goods":
+					_, err = server.DeleteGoods(ctx, &proto.DeleteGoodsInfo{Id: 7})
 				}
 				if status.Code(err) != want || strings.Contains(status.Convert(err).Message(), "private SQL") {
 					t.Fatalf("got %v, want %v", err, want)
 				}
 			})
+		}
+	}
+}
+
+func TestDeleteGoodsRejectsInvalidIDBeforeSQL(t *testing.T) {
+	catalogDatabase(t)
+	for _, req := range []*proto.DeleteGoodsInfo{nil, {}, {Id: -1}} {
+		rsp, err := (&handler.GoodsServer{}).DeleteGoods(context.Background(), req)
+		if rsp != nil || status.Code(err) != codes.InvalidArgument {
+			t.Fatalf("invalid delete reached database: %v %v", rsp, err)
 		}
 	}
 }

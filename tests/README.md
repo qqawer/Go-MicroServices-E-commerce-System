@@ -95,3 +95,5 @@ AWS 现有库与旧 bootstrap 保持原样，没有执行线上 DDL，也没有�
 2026-09-30 mxshop 对照复查补漏：`goods_srv/handler/catalog_read_delete_test.go` 覆盖品牌计数/分页、子分类查询/关联预加载、品牌/分类/轮播图删除的 SQL 与提交错误，以及取消、期限、正常空结果；品牌/轮播图创建也验证取消及查重/写入/提交失败。品牌分页不再预读全表，失败不返回遗留数据；删除先检查 Error 再判断 RowsAffected。此批无表、协议或迁移变化，不包含压测或启用限流。
 
 2026-09-30 管理员用户列表：`user_srv/handler/user_list_test.go` 验证 COUNT 与分页错误均返回失败、取消/超时传递、总数与偏移溢出以及稳定排序；`tests/integration/user/list_test.go` 在隔离 MySQL + gRPC 中验证逐页读取、总数和软删除过滤。原先全表读取后分页失败仍返回旧用户数据的路径已移除；0 使用默认 1/10、每页最多 100 的兼容行为保留。
+
+2026-09-30 商品删除：`goods_srv/handler/catalog_read_delete_test.go` 的删除故障矩阵加入商品，覆盖事务开始、SQL、提交错误、缺失商品、成功、取消和超时，另验证无效 ID 不执行 SQL。`tests/integration/goods/rpc_test.go` 在隔离数据库的回滚事务内验证只软删除指定商品、取消前不删除、重复删除返回 NotFound、相邻商品仍可读取；不在 AWS 上删除现有商品。提交/网络错误不能证明事务未提交，必须查询实际状态确认。

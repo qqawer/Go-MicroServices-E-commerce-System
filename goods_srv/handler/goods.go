@@ -171,7 +171,14 @@ func (s *GoodsServer) BatchGetGoods(ctx context.Context, req *proto.BatchGoodsId
 
 // DeleteGoods 删除商品
 func (s *GoodsServer) DeleteGoods(ctx context.Context, req *proto.DeleteGoodsInfo) (*emptypb.Empty, error) {
-	if result := global.DB.Delete(&model.Goods{}, req.Id); result.RowsAffected == 0 {
+	if req == nil || req.Id <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "商品 ID 无效")
+	}
+	result := global.DB.WithContext(ctx).Delete(&model.Goods{}, req.Id)
+	if result.Error != nil {
+		return nil, catalogDBError(ctx, result.Error, "删除商品结果未确认，请查询后重试")
+	}
+	if result.RowsAffected == 0 {
 		return nil, status.Errorf(codes.NotFound, "商品不存在")
 	}
 	return &emptypb.Empty{}, nil

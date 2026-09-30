@@ -3,10 +3,12 @@
 package goods_test
 
 import (
+	"context"
 	"testing"
 
 	"grpctest/goods_srv/global"
 	"grpctest/goods_srv/handler"
+	"grpctest/goods_srv/model"
 	"grpctest/goods_srv/model/proto"
 	"grpctest/tests/integration/testdb"
 
@@ -14,6 +16,50 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+func TestDeleteGoodsSoftDeletesOnlyTheRequestedRow(t *testing.T) {
+	// The test uses the isolated database inside a transaction rolled back by cleanup.
+	ctx, client := categoryClient(t)
+	var neighbor model.Goods
+	if err := global.DB.First(&neighbor, 421).Error; err != nil {
+		t.Fatal(err)
+	}
+	neighbor.ID = 0
+	neighbor.GoodsSn = "DELETE-NEIGHBOR"
+	if err := global.DB.Create(&neighbor).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int32{0, -1} {
+		if _, err := client.DeleteGoods(ctx, &proto.DeleteGoodsInfo{Id: id}); status.Code(err) != codes.InvalidArgument {
+			t.Fatal(err)
+		}
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := client.DeleteGoods(canceled, &proto.DeleteGoodsInfo{Id: 421}); status.Code(err) != codes.Canceled {
+		t.Fatal(err)
+	}
+	if _, err := client.GetGoodsDetail(ctx, &proto.GoodInfoRequest{Id: 421}); err != nil {
+		t.Fatal("canceled delete removed goods", err)
+	}
+	if _, err := client.DeleteGoods(ctx, &proto.DeleteGoodsInfo{Id: 421}); err != nil {
+		t.Fatal(err)
+	}
+	var deleted model.Goods
+	if err := global.DB.Unscoped().First(&deleted, 421).Error; err != nil || !deleted.DeletedAt.Valid {
+		t.Fatal("goods was not soft-deleted", err)
+	}
+	if _, err := client.GetGoodsDetail(ctx, &proto.GoodInfoRequest{Id: 421}); status.Code(err) != codes.NotFound {
+		t.Fatal("deleted goods still visible", err)
+	}
+	if _, err := client.DeleteGoods(ctx, &proto.DeleteGoodsInfo{Id: 421}); status.Code(err) != codes.NotFound {
+		t.Fatal("repeated delete must report missing goods", err)
+	}
+	remaining, err := client.GetGoodsDetail(ctx, &proto.GoodInfoRequest{Id: neighbor.ID})
+	if err != nil || remaining.GetGoodsSn() != neighbor.GoodsSn {
+		t.Fatal("delete affected another product", err)
+	}
+}
 
 func TestGoodsListAndDetail(t *testing.T) {
 	previous := global.DB
