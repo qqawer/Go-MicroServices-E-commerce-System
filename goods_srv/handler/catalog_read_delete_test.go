@@ -196,6 +196,9 @@ func TestCatalogCreatesKeepContextAndCheckErrors(t *testing.T) {
 				case "exists":
 					mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7))
 					want = codes.InvalidArgument
+					if entity == "brand" {
+						want = codes.AlreadyExists
+					}
 				default:
 					if entity == "brand" {
 						mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id"}))

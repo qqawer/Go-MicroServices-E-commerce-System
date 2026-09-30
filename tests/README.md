@@ -99,3 +99,5 @@ AWS 现有库与旧 bootstrap 保持原样，没有执行线上 DDL，也没有�
 2026-09-30 商品删除：`goods_srv/handler/catalog_read_delete_test.go` 的删除故障矩阵加入商品，覆盖事务开始、SQL、提交错误、缺失商品、成功、取消和超时，另验证无效 ID 不执行 SQL。`tests/integration/goods/rpc_test.go` 在隔离数据库的回滚事务内验证只软删除指定商品、取消前不删除、重复删除返回 NotFound、相邻商品仍可读取；不在 AWS 上删除现有商品。提交/网络错误不能证明事务未提交，必须查询实际状态确认。
 
 2026-09-30 轮播图排序：`goods_srv/handler/banner_index_test.go` 验证创建时显式 index=0 不被 GORM 改成默认 1，列表按 index 升序、同值按 ID 升序。`tests/integration/goods/banner_test.go` 在隔离 MySQL + gRPC 中创建 5/0/2/0 四张测试轮播图，核对数据库保存值、排序和更新为 0 后的位置；事务结束回滚。仅移除模型的 default 标签以使 INSERT 明确写入 0，没有修改现有 SQL 默认值、迁移或线上数据；需要同步更新 goods-web 才能通过 HTTP 提交 index=0。
+
+2026-09-30 品牌名称冲突：创建前查重、INSERT/UPDATE 遇到 MySQL 重复键均返回 AlreadyExists 和“品牌名称已存在”，现有 Web 对应 HTTP 409。`goods_srv/handler/brand_conflict_test.go` 覆盖查重通过后写入冲突的分支；真实 MySQL + gRPC 的 `tests/integration/goods/brand_conflict_test.go` 验证重复创建、重命名冲突不改变原名称或 Logo、保留自身名称及重复保存仍成功。软删除记录仍占用现有名称唯一键，再次同名创建也返回 409；没有增加恢复品牌功能或修改唯一键。其他数据库错误、提交失败及取消继续由既有目录回归覆盖，测试数据只写入隔离数据库。

@@ -7,6 +7,7 @@ import (
 	"grpctest/goods_srv/model"
 	"grpctest/goods_srv/model/proto"
 
+	"github.com/go-sql-driver/mysql"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -63,7 +64,7 @@ func (g *GoodsServer) CreateBrand(ctx context.Context, req *proto.BrandRequest) 
 	db := global.DB.WithContext(ctx)
 	err := db.Where("name=?", req.Name).First(&model.Brands{}).Error
 	if err == nil {
-		return nil, status.Errorf(codes.InvalidArgument, "品牌已存在")
+		return nil, status.Error(codes.AlreadyExists, "品牌名称已存在")
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, catalogDBError(ctx, err, "查询品牌失败")
@@ -79,7 +80,7 @@ func (g *GoodsServer) CreateBrand(ctx context.Context, req *proto.BrandRequest) 
 
 	result := db.Create(&brand)
 	if result.Error != nil {
-		return nil, catalogDBError(ctx, result.Error, "创建品牌失败")
+		return nil, brandDBError(ctx, result.Error, "创建品牌失败")
 	}
 	BrandResponse := ModelToRsponse(brand)
 	return &BrandResponse, nil
@@ -121,8 +122,16 @@ func (g *GoodsServer) UpdateBrand(ctx context.Context, req *proto.BrandRequest) 
 
 	if len(fields) > 0 {
 		if err := db.Model(&brand).Select(fields).Updates(&brand).Error; err != nil {
-			return nil, catalogDBError(ctx, err, "更新品牌失败")
+			return nil, brandDBError(ctx, err, "更新品牌失败")
 		}
 	}
 	return &emptypb.Empty{}, nil
+}
+
+func brandDBError(ctx context.Context, err error, message string) error {
+	var mysqlError *mysql.MySQLError
+	if ctx.Err() == nil && errors.As(err, &mysqlError) && mysqlError.Number == 1062 {
+		return status.Error(codes.AlreadyExists, "品牌名称已存在")
+	}
+	return catalogDBError(ctx, err, message)
 }
