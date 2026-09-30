@@ -92,12 +92,14 @@ func (g *GoodsServer) CreateCategoryBrand(ctx context.Context, req *proto.Catego
 	if req.GetCategoryId() <= 0 || req.GetBrandId() <= 0 {
 		return nil, status.Error(codes.InvalidArgument, "分类和品牌 ID 必须为正整数")
 	}
-	db := global.DB.WithContext(ctx)
-	if err := validateCategoryBrand(db, req.CategoryId, req.BrandId); err != nil {
-		return nil, categoryDBError(ctx, err, "创建分类品牌关联失败")
-	}
 	relation := model.GoodsCategoryBrand{CategoryID: req.CategoryId, BrandsID: req.BrandId}
-	if err := db.Omit(clause.Associations).Create(&relation).Error; err != nil {
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := validateCategoryBrand(tx, req.CategoryId, req.BrandId); err != nil {
+			return err
+		}
+		return tx.Omit(clause.Associations).Create(&relation).Error
+	})
+	if err != nil {
 		return nil, categoryDBError(ctx, err, "创建分类品牌关联失败")
 	}
 	return &proto.CategoryBrandResponse{Id: relation.ID}, nil
@@ -145,13 +147,13 @@ func (g *GoodsServer) UpdateCategoryBrand(ctx context.Context, req *proto.Catego
 }
 
 func validateCategoryBrand(db *gorm.DB, categoryID, brandID int32) error {
-	if err := db.Select("id").First(&model.Category{}, categoryID).Error; err != nil {
+	if err := db.Clauses(clause.Locking{Strength: "SHARE"}).Select("id").First(&model.Category{}, categoryID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return status.Error(codes.InvalidArgument, "商品分类不存在")
 		}
 		return err
 	}
-	if err := db.Select("id").First(&model.Brands{}, brandID).Error; err != nil {
+	if err := db.Clauses(clause.Locking{Strength: "SHARE"}).Select("id").First(&model.Brands{}, brandID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return status.Error(codes.InvalidArgument, "品牌不存在")
 		}

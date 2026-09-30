@@ -60,13 +60,13 @@ func (s *GoodsServer) CreateGoods(ctx context.Context, req *proto.CreateGoodsInf
 			}
 			return nil
 		}
-		if err := tx.First(&model.Category{}, req.CategoryId).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).First(&model.Category{}, req.CategoryId).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return status.Error(codes.InvalidArgument, "商品分类不存在")
 			}
 			return err
 		}
-		if err := tx.First(&model.Brands{}, req.BrandId).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).First(&model.Brands{}, req.BrandId).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return status.Error(codes.InvalidArgument, "品牌不存在")
 			}

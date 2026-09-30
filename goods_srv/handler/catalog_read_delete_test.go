@@ -109,45 +109,82 @@ func TestSubCategoryChecksEveryReadAndCancellation(t *testing.T) {
 
 func TestCatalogDeletesCheckDatabaseOutcome(t *testing.T) {
 	for _, entity := range []string{"brand", "banner", "category", "goods"} {
-		for _, outcome := range []string{"begin", "write", "commit", "missing", "success", "canceled", "deadline"} {
+		for _, outcome := range []string{"begin", "lookup", "references", "write", "commit", "missing", "success", "canceled", "deadline"} {
+			guarded := entity == "brand" || entity == "category"
+			if !guarded && (outcome == "lookup" || outcome == "references") {
+				continue
+			}
 			t.Run(entity+"/"+outcome, func(t *testing.T) {
 				mock := catalogDatabase(t)
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 				failure := errors.New("private SQL failure")
 				want := codes.Internal
-				switch outcome {
-				case "canceled":
-					cancel()
-					want = codes.Canceled
-				case "deadline":
-					var done context.CancelFunc
-					ctx, done = context.WithDeadline(ctx, time.Now().Add(-time.Second))
-					defer done()
-					want = codes.DeadlineExceeded
-				case "begin":
-					mock.ExpectBegin().WillReturnError(failure)
-				default:
+				func() {
+					switch outcome {
+					case "canceled":
+						cancel()
+						want = codes.Canceled
+						return
+					case "deadline":
+						var done context.CancelFunc
+						ctx, done = context.WithDeadline(ctx, time.Now().Add(-time.Second))
+						defer done()
+						want = codes.DeadlineExceeded
+						return
+					case "begin":
+						mock.ExpectBegin().WillReturnError(failure)
+						return
+					}
 					mock.ExpectBegin()
+					if guarded {
+						lookup := mock.ExpectQuery("SELECT .*FOR UPDATE")
+						if outcome == "lookup" {
+							lookup.WillReturnError(failure)
+							mock.ExpectRollback()
+							return
+						}
+						if outcome == "missing" {
+							lookup.WillReturnRows(sqlmock.NewRows([]string{"id"}))
+							mock.ExpectRollback()
+							want = codes.NotFound
+							return
+						}
+						lookup.WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7))
+						checks := 2
+						if entity == "category" {
+							checks = 3
+						}
+						for i := 0; i < checks; i++ {
+							query := mock.ExpectQuery("SELECT count")
+							if outcome == "references" {
+								query.WillReturnError(failure)
+								mock.ExpectRollback()
+								return
+							}
+							query.WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+						}
+					}
 					if outcome == "write" {
 						mock.ExpectExec("UPDATE").WillReturnError(failure)
 						mock.ExpectRollback()
-					} else {
-						affected := int64(1)
-						if outcome == "missing" {
-							affected = 0
-							want = codes.NotFound
-						} else if outcome == "success" {
-							want = codes.OK
-						}
-						mock.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, affected))
-						if outcome == "commit" {
-							mock.ExpectCommit().WillReturnError(failure)
-						} else {
-							mock.ExpectCommit()
-						}
+						return
 					}
-				}
+					affected := int64(1)
+					if outcome == "missing" {
+						affected = 0
+						want = codes.NotFound
+					}
+					if outcome == "success" {
+						want = codes.OK
+					}
+					mock.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, affected))
+					if outcome == "commit" {
+						mock.ExpectCommit().WillReturnError(failure)
+					} else {
+						mock.ExpectCommit()
+					}
+				}()
 				var err error
 				server := &handler.GoodsServer{}
 				switch entity {

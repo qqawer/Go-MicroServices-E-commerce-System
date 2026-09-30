@@ -26,13 +26,13 @@ func (s *GoodsServer) UpdateGoods(ctx context.Context, req *proto.CreateGoodsInf
 		if err := lockGoodsForUpdate(tx, req.Id); err != nil {
 			return err
 		}
-		if err := tx.Select("id").First(&model.Category{}, req.CategoryId).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("id").First(&model.Category{}, req.CategoryId).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return status.Error(codes.InvalidArgument, "商品分类不存在")
 			}
 			return err
 		}
-		if err := tx.Select("id").First(&model.Brands{}, req.BrandId).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("id").First(&model.Brands{}, req.BrandId).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return status.Error(codes.InvalidArgument, "品牌不存在")
 			}

@@ -53,12 +53,14 @@ func TestCategoryDatabaseFailuresAreNotReportedAsSuccessOrMissing(t *testing.T) 
 				}
 				_, err = server.CreateCategory(ctx, &proto.CategoryInfoRequest{Name: "Test category", Level: 1})
 			case "relation lookup":
+				mock.ExpectBegin()
 				mock.ExpectQuery("SELECT").WillReturnError(failure)
+				mock.ExpectRollback()
 				_, err = server.CreateCategoryBrand(ctx, &proto.CategoryBrandRequest{CategoryId: 1, BrandId: 1})
 			case "relation insert":
-				lookup()
-				lookup()
 				mock.ExpectBegin()
+				lookup()
+				lookup()
 				mock.ExpectExec("INSERT").WillReturnError(failure)
 				mock.ExpectRollback()
 				_, err = server.CreateCategoryBrand(ctx, &proto.CategoryBrandRequest{CategoryId: 1, BrandId: 1})

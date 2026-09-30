@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 //Paginate 将数据进行分页
@@ -88,12 +89,26 @@ func (g *GoodsServer) CreateBrand(ctx context.Context, req *proto.BrandRequest) 
 
 //DeleteBrand 删除品牌
 func (g *GoodsServer) DeleteBrand(ctx context.Context, req *proto.BrandRequest) (*emptypb.Empty, error) {
-	result := global.DB.WithContext(ctx).Delete(&model.Brands{}, req.Id)
-	if result.Error != nil {
-		return nil, catalogDBError(ctx, result.Error, "删除品牌结果未确认，请查询后重试")
+	if req.GetId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "品牌 ID 必须为正整数")
 	}
-	if result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.NotFound, "品牌不存在")
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&model.Brands{}, req.Id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return status.Error(codes.NotFound, "品牌不存在")
+			}
+			return err
+		}
+		if err := rejectCatalogReferences(tx.Model(&model.Goods{}).Where("brands_id = ?", req.Id), "品牌仍被商品使用，请先迁移或删除商品"); err != nil {
+			return err
+		}
+		if err := rejectCatalogReferences(tx.Model(&model.GoodsCategoryBrand{}).Where("brands_id = ?", req.Id), "品牌仍有关联分类，请先解除关联"); err != nil {
+			return err
+		}
+		return tx.Delete(&model.Brands{}, req.Id).Error
+	})
+	if err != nil {
+		return nil, catalogDBError(ctx, err, "删除品牌结果未确认，请查询后重试")
 	}
 	return &emptypb.Empty{}, nil
 }

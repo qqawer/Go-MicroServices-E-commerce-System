@@ -70,6 +70,9 @@ func TestCatalogUpdatesReportDatabaseFailures(t *testing.T) {
 				defer cancel()
 				failure := errors.New("private SQL failure")
 				want := codes.Internal
+				if name == "category" && stage != "canceled" {
+					mock.ExpectBegin()
+				}
 				switch stage {
 				case "lookup":
 					mock.ExpectQuery("SELECT").WillReturnError(failure)
@@ -81,7 +84,9 @@ func TestCatalogUpdatesReportDatabaseFailures(t *testing.T) {
 					want = codes.Canceled
 				default:
 					mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "logo", "is_tab"}).AddRow(7, "Old", "https://example.invalid/old.png", true))
-					mock.ExpectBegin()
+					if name != "category" {
+						mock.ExpectBegin()
+					}
 					if stage == "write" {
 						mock.ExpectExec("UPDATE").WillReturnError(failure)
 						mock.ExpectRollback()
@@ -89,6 +94,9 @@ func TestCatalogUpdatesReportDatabaseFailures(t *testing.T) {
 						mock.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 						mock.ExpectCommit().WillReturnError(failure)
 					}
+				}
+				if name == "category" && (stage == "lookup" || stage == "missing") {
+					mock.ExpectRollback()
 				}
 				if err := call(ctx); status.Code(err) != want || strings.Contains(status.Convert(err).Message(), "private SQL") {
 					t.Fatalf("got %v, want generic %v", err, want)

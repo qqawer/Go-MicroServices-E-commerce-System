@@ -88,29 +88,31 @@ func (s *GoodsServer) CreateCategory(ctx context.Context, req *proto.CategoryInf
 	if (req.Level == 1 && req.ParentCategory != 0) || (req.Level > 1 && req.ParentCategory <= 0) {
 		return nil, status.Error(codes.InvalidArgument, "一级分类不能设置父级，子分类必须指定父级")
 	}
-	db := global.DB.WithContext(ctx)
-	if req.Level > 1 {
-		var parent model.Category
-		if err := db.Select("id", "level").First(&parent, req.ParentCategory).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, status.Error(codes.InvalidArgument, "父分类不存在")
-			}
-			return nil, categoryDBError(ctx, err, "创建分类失败")
-		}
-		if parent.Level != req.Level-1 {
-			return nil, status.Error(codes.InvalidArgument, "父分类层级不匹配")
-		}
-	}
 	category := model.Category{
 		Name: req.Name, Level: req.Level, ParentCategoryID: req.ParentCategory, IsTab: req.IsTab,
 	}
-	omit := []string{clause.Associations}
-	if req.Level == 1 {
-		// Root categories use SQL NULL, not a foreign key pointing to ID 0.
-		omit = append(omit, "ParentCategoryID")
-		category.ParentCategoryID = 0
-	}
-	if err := db.Omit(omit...).Create(&category).Error; err != nil {
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if req.Level > 1 {
+			var parent model.Category
+			if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("id", "level").First(&parent, req.ParentCategory).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return status.Error(codes.InvalidArgument, "父分类不存在")
+				}
+				return err
+			}
+			if parent.Level != req.Level-1 {
+				return status.Error(codes.InvalidArgument, "父分类层级不匹配")
+			}
+		}
+		omit := []string{clause.Associations}
+		if req.Level == 1 {
+			// Root categories use SQL NULL, not a foreign key pointing to ID 0.
+			omit = append(omit, "ParentCategoryID")
+			category.ParentCategoryID = 0
+		}
+		return tx.Omit(omit...).Create(&category).Error
+	})
+	if err != nil {
 		return nil, categoryDBError(ctx, err, "创建分类失败")
 	}
 	return &proto.CategoryInfoResponse{
@@ -121,48 +123,70 @@ func (s *GoodsServer) CreateCategory(ctx context.Context, req *proto.CategoryInf
 
 // DeleteCategory 删除分类
 func (g *GoodsServer) DeleteCategory(c context.Context, req *proto.DeleteCategoryRequest) (*empty.Empty, error) {
-	result := global.DB.WithContext(c).Delete(&model.Category{}, req.Id)
-	if result.Error != nil {
-		return nil, catalogDBError(c, result.Error, "删除分类结果未确认，请查询后重试")
+	if req.GetId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "分类 ID 必须为正整数")
 	}
-	if result.RowsAffected == 0 {
-		return nil, status.Errorf(codes.NotFound, "商品分类不存在")
+	err := global.DB.WithContext(c).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&model.Category{}, req.Id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return status.Error(codes.NotFound, "商品分类不存在")
+			}
+			return err
+		}
+		if err := rejectCatalogReferences(tx.Model(&model.Category{}).Where("parent_category_id = ?", req.Id), "分类仍有子分类，请先迁移或删除子分类"); err != nil {
+			return err
+		}
+		if err := rejectCatalogReferences(tx.Model(&model.Goods{}).Where("category_id = ?", req.Id), "分类仍被商品使用，请先迁移或删除商品"); err != nil {
+			return err
+		}
+		if err := rejectCatalogReferences(tx.Model(&model.GoodsCategoryBrand{}).Where("category_id = ?", req.Id), "分类仍有关联品牌，请先解除关联"); err != nil {
+			return err
+		}
+		return tx.Delete(&model.Category{}, req.Id).Error
+	})
+	if err != nil {
+		return nil, catalogDBError(c, err, "删除分类结果未确认，请查询后重试")
 	}
 	return &empty.Empty{}, nil
 }
 
 // UpdateCategory 更新分类
 func (g *GoodsServer) UpdateCategory(c context.Context, req *proto.CategoryInfoRequest) (*empty.Empty, error) {
-	db := global.DB.WithContext(c)
-	var category model.Category
-	if err := db.First(&category, req.Id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, status.Errorf(codes.NotFound, "商品分类不存在")
+	err := global.DB.WithContext(c).Transaction(func(tx *gorm.DB) error {
+		var category model.Category
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&category, req.Id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return status.Error(codes.NotFound, "商品分类不存在")
+			}
+			return err
 		}
-		return nil, catalogDBError(c, err, "查询分类失败")
-	}
-	fields := []string{"is_tab"}
-	if req.Name != "" {
-		category.Name = req.Name
-		fields = append(fields, "name")
-	}
+		fields := []string{"is_tab"}
+		if req.Name != "" {
+			category.Name = req.Name
+			fields = append(fields, "name")
+		}
+		if req.ParentCategory != 0 {
+			if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("id").First(&model.Category{}, req.ParentCategory).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return status.Error(codes.InvalidArgument, "父分类不存在")
+				}
+				return err
+			}
+			category.ParentCategoryID = req.ParentCategory
+			fields = append(fields, "parent_category_id")
+		}
+		if req.Level != 0 {
+			category.Level = req.Level
+			fields = append(fields, "level")
+		}
+		// The update form requires is_tab; false is an explicit value.
+		category.IsTab = req.IsTab
 
-	if req.ParentCategory != 0 {
-		//类目级别
-		category.ParentCategoryID = req.ParentCategory
-		fields = append(fields, "parent_category_id")
-	}
-	if req.Level != 0 {
-		category.Level = req.Level
-		fields = append(fields, "level")
-	}
-	// The update form requires is_tab; false is an explicit value.
-	category.IsTab = req.IsTab
-
-	// Only submitted columns are written, preserving a root's NULL parent.
-	if err := db.Model(&category).Select(fields).Updates(&category).Error; err != nil {
+		// Only submitted columns are written, preserving a root's NULL parent.
+		return tx.Model(&category).Select(fields).Updates(&category).Error
+	})
+	if err != nil {
 		return nil, categoryDBError(c, err, "更新分类失败")
 	}
-
 	return &empty.Empty{}, nil
 }
