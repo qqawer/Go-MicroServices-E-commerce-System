@@ -2,14 +2,17 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"grpctest/user_srv/global"
 	"grpctest/user_srv/model/proto"
 	model "grpctest/user_srv/model/user"
 	"grpctest/user_srv/utils"
 	"math"
 
+	"github.com/go-sql-driver/mysql"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"gorm.io/gorm"
 )
 
 type UserServer struct {
@@ -105,9 +108,16 @@ func (s *UserServer) GetUserById(ctx context.Context, req *proto.IdRequest) (*pr
 func (s *UserServer) CreateUser(ctx context.Context, req *proto.CreateUserInfo) (*proto.UserInfoResponse, error) {
 	//创建用户
 	var user model.User
-	result := global.DB.Where(&model.User{Mobile: req.Mobile}).First(&user)
-	if result.RowsAffected == 1 {
+	db := global.DB.WithContext(ctx)
+	err := db.Where("mobile = ?", req.Mobile).First(&user).Error
+	if ctx.Err() != nil {
+		return nil, status.FromContextError(ctx.Err()).Err()
+	}
+	if err == nil {
 		return nil, status.Errorf(codes.AlreadyExists, "用户已存在")
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, profileDBError(ctx, err)
 	}
 	user.Mobile = req.Mobile
 	user.NickName = req.NickName
@@ -115,13 +125,22 @@ func (s *UserServer) CreateUser(ctx context.Context, req *proto.CreateUserInfo) 
 	//密码加密
 	newPassword, err := utils.HashPassword(req.PassWord)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.Internal, "创建用户失败")
 	}
 	user.Password = newPassword
 
-	result = global.DB.Create(&user)
+	result := db.Create(&user)
 	if result.Error != nil {
-		return nil, status.Errorf(codes.Internal, result.Error.Error())
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+		// The mobile unique key also covers concurrent registrations and numbers
+		// retained by soft-deleted users after the preflight lookup misses them.
+		var duplicate *mysql.MySQLError
+		if errors.As(result.Error, &duplicate) && duplicate.Number == 1062 {
+			return nil, status.Error(codes.AlreadyExists, "用户已存在")
+		}
+		return nil, status.Error(codes.Internal, "创建用户结果未确认，请尝试登录或稍后重试")
 	}
 
 	userInfoRsp := ModelToResponse(user)

@@ -105,3 +105,7 @@ AWS 现有库与旧 bootstrap 保持原样，没有执行线上 DDL，也没有�
 2026-10-01 分类更新层级：`UpdateCategory` 的 ID 必须为正整数；`level=0`、`parentCategory=0` 保留旧值，不表示清空父级。修改结构时校验最终层级为 1–3、一级没有父级、子分类的父级存在且恰好高一级，禁止自身作为父级。有活跃子分类时不能直接改变层级（FailedPrecondition）；同层级移动子树、无活跃子项的合法层级调整仍可使用。当前协议不能表达将子分类的父级清空为 NULL，本次没有增加升为根分类的能力。Web 现有名称/is_tab 编辑不改变这些结构字段。
 
 `tests/integration/goods/category_hierarchy_test.go` 在真实 MySQL + gRPC 中验证非法结构拒绝且数据不变、合法移动、重复提交和软删除子项；`category_hierarchy_race_test.go` 用真实 MySQL 多连接验证层级修改与子分类创建/移动的两种先后顺序，目标行锁持有由 NOWAIT 检查。先完成子项写入则拒绝改父级层级，先完成父级层级修改则拒绝原层级的子项写入，最终不存在父子层级错配。`goods_srv/handler/category_hierarchy_test.go` 检查父级查询/子项计数失败时回滚并返回安全错误。无新增表、迁移、协议或 MQ。
+
+2026-10-01 注册结果与取消：`user_srv/handler/create_user_test.go` 验证查重失败、已取消/过期及查询超时不会进入创建流程；在密码哈希之后取消也不会执行 INSERT。已有手机号和写入阶段 MySQL 1062（含包装错误）均返回 AlreadyExists，其余写入/提交失败返回通用 Internal，不暴露 SQL 信息。提交异常不代表事务一定回滚。
+
+`tests/integration/user/registration_test.go` 用实际 gRPC、生产密码哈希及真实 MySQL 多连接，让两个注册查重都完成且查无记录后再并发 INSERT，验证恰好一次成功、另一个 AlreadyExists、数据库只有一个账号且资料与成功响应相符。普通重复与软删除手机号重复都不覆盖密码、昵称、角色或恢复账号。本批不修改唯一索引、表、协议、哈希成本或短信配置；新增用例随完整集成命令运行。
