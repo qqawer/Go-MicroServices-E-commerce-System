@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"fmt"
 	"grpctest/goods_srv/global"
 	"grpctest/goods_srv/model"
 	"grpctest/goods_srv/model/proto"
@@ -88,7 +87,6 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 	}
 
 	//通过category去查询商品
-	var subQuery string
 	if req.TopCategory > 0 {
 		var category model.Category
 		categoryDB := global.DB.WithContext(ctx)
@@ -100,15 +98,18 @@ func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterReque
 			return nil, status.Errorf(codes.NotFound, "商品分类不存在")
 		}
 
+		// Include this category and its descendants within the three-level tree.
+		// Model-scoped subqueries exclude deleted categories at every step.
+		categoryIDs := categoryDB.Model(&model.Category{}).Select("id").Where("id = ?", category.ID)
+		if category.Level < 3 {
+			categoryIDs = categoryIDs.Or("parent_category_id = ?", category.ID)
+		}
 		if category.Level == 1 {
-			subQuery = fmt.Sprintf("select id from category where parent_category_id in (select id from category WHERE parent_category_id=%d)", req.TopCategory)
-		} else if category.Level == 2 {
-			subQuery = fmt.Sprintf("select id from category WHERE parent_category_id=%d", req.TopCategory)
-		} else if category.Level == 3 {
-			subQuery = fmt.Sprintf("select id from category WHERE id=%d", req.TopCategory)
+			children := categoryDB.Model(&model.Category{}).Select("id").Where("parent_category_id = ?", category.ID)
+			categoryIDs = categoryIDs.Or("parent_category_id IN (?)", children)
 		}
 
-		localDB = localDB.Where(fmt.Sprintf("category_id in (%s)", subQuery))
+		localDB = localDB.Where("category_id IN (?)", categoryIDs)
 	}
 
 	var count int64
