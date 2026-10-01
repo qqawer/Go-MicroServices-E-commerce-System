@@ -101,3 +101,7 @@ AWS 现有库与旧 bootstrap 保持原样，没有执行线上 DDL，也没有�
 2026-09-30 轮播图排序：`goods_srv/handler/banner_index_test.go` 验证创建时显式 index=0 不被 GORM 改成默认 1，列表按 index 升序、同值按 ID 升序。`tests/integration/goods/banner_test.go` 在隔离 MySQL + gRPC 中创建 5/0/2/0 四张测试轮播图，核对数据库保存值、排序和更新为 0 后的位置；事务结束回滚。仅移除模型的 default 标签以使 INSERT 明确写入 0，没有修改现有 SQL 默认值、迁移或线上数据；需要同步更新 goods-web 才能通过 HTTP 提交 index=0。
 
 2026-09-30 品牌名称冲突：创建前查重、INSERT/UPDATE 遇到 MySQL 重复键均返回 AlreadyExists 和“品牌名称已存在”，现有 Web 对应 HTTP 409。`goods_srv/handler/brand_conflict_test.go` 覆盖查重通过后写入冲突的分支；真实 MySQL + gRPC 的 `tests/integration/goods/brand_conflict_test.go` 验证重复创建、重命名冲突不改变原名称或 Logo、保留自身名称及重复保存仍成功。软删除记录仍占用现有名称唯一键，再次同名创建也返回 409；没有增加恢复品牌功能或修改唯一键。其他数据库错误、提交失败及取消继续由既有目录回归覆盖，测试数据只写入隔离数据库。
+
+2026-10-01 分类更新层级：`UpdateCategory` 的 ID 必须为正整数；`level=0`、`parentCategory=0` 保留旧值，不表示清空父级。修改结构时校验最终层级为 1–3、一级没有父级、子分类的父级存在且恰好高一级，禁止自身作为父级。有活跃子分类时不能直接改变层级（FailedPrecondition）；同层级移动子树、无活跃子项的合法层级调整仍可使用。当前协议不能表达将子分类的父级清空为 NULL，本次没有增加升为根分类的能力。Web 现有名称/is_tab 编辑不改变这些结构字段。
+
+`tests/integration/goods/category_hierarchy_test.go` 在真实 MySQL + gRPC 中验证非法结构拒绝且数据不变、合法移动、重复提交和软删除子项；`category_hierarchy_race_test.go` 用真实 MySQL 多连接验证层级修改与子分类创建/移动的两种先后顺序，目标行锁持有由 NOWAIT 检查。先完成子项写入则拒绝改父级层级，先完成父级层级修改则拒绝原层级的子项写入，最终不存在父子层级错配。`goods_srv/handler/category_hierarchy_test.go` 检查父级查询/子项计数失败时回滚并返回安全错误。无新增表、迁移、协议或 MQ。

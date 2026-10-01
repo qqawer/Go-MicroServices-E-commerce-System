@@ -152,6 +152,12 @@ func (g *GoodsServer) DeleteCategory(c context.Context, req *proto.DeleteCategor
 
 // UpdateCategory 更新分类
 func (g *GoodsServer) UpdateCategory(c context.Context, req *proto.CategoryInfoRequest) (*empty.Empty, error) {
+	if req.GetId() <= 0 || req.GetLevel() < 0 || req.GetLevel() > 3 || req.GetParentCategory() < 0 {
+		return nil, status.Error(codes.InvalidArgument, "分类 ID 必须为正整数，层级须为 1–3（0 表示不修改），父分类不能为负数")
+	}
+	if req.ParentCategory == req.Id {
+		return nil, status.Error(codes.InvalidArgument, "分类不能以自身作为父分类")
+	}
 	err := global.DB.WithContext(c).Transaction(func(tx *gorm.DB) error {
 		var category model.Category
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&category, req.Id).Error; err != nil {
@@ -160,24 +166,46 @@ func (g *GoodsServer) UpdateCategory(c context.Context, req *proto.CategoryInfoR
 			}
 			return err
 		}
+		previousLevel := category.Level
 		fields := []string{"is_tab"}
 		if req.Name != "" {
 			category.Name = req.Name
 			fields = append(fields, "name")
 		}
 		if req.ParentCategory != 0 {
-			if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("id").First(&model.Category{}, req.ParentCategory).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return status.Error(codes.InvalidArgument, "父分类不存在")
-				}
-				return err
-			}
 			category.ParentCategoryID = req.ParentCategory
 			fields = append(fields, "parent_category_id")
 		}
 		if req.Level != 0 {
 			category.Level = req.Level
 			fields = append(fields, "level")
+		}
+		if req.ParentCategory != 0 || req.Level != 0 {
+			// Proto scalar zero retains the stored value; validate the resulting pair.
+			if category.Level < 1 || category.Level > 3 ||
+				(category.Level == 1 && category.ParentCategoryID != 0) ||
+				(category.Level > 1 && category.ParentCategoryID <= 0) {
+				return status.Error(codes.InvalidArgument, "分类层级与父分类不匹配")
+			}
+			if category.Level > 1 {
+				var parent model.Category
+				if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("id", "level").First(&parent, category.ParentCategoryID).Error; err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						return status.Error(codes.InvalidArgument, "父分类不存在")
+					}
+					return err
+				}
+				if parent.Level != category.Level-1 {
+					return status.Error(codes.InvalidArgument, "父分类层级不匹配")
+				}
+			}
+			if category.Level != previousLevel {
+				// Child writers also lock this category, so the count stays valid
+				// through commit. Do not change descendant levels implicitly.
+				if err := rejectCatalogReferences(tx.Model(&model.Category{}).Where("parent_category_id = ?", category.ID), "分类仍有子分类，不能直接修改层级"); err != nil {
+					return err
+				}
+			}
 		}
 		// The update form requires is_tab; false is an explicit value.
 		category.IsTab = req.IsTab
