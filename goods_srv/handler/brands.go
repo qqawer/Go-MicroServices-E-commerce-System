@@ -115,30 +115,33 @@ func (g *GoodsServer) DeleteBrand(ctx context.Context, req *proto.BrandRequest) 
 
 //UpdateBrand 更新品牌
 func (g *GoodsServer) UpdateBrand(ctx context.Context, req *proto.BrandRequest) (*emptypb.Empty, error) {
-	db := global.DB.WithContext(ctx)
-	var brand model.Brands
-	if err := db.First(&brand, req.Id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, status.Errorf(codes.NotFound, "品牌不存在")
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var brand model.Brands
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&brand, req.Id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return status.Errorf(codes.NotFound, "品牌不存在")
+			}
+			return err
 		}
-		return nil, catalogDBError(ctx, err, "查询品牌失败")
-	}
 
-	var fields []string
-	if req.Name != "" {
-		brand.Name = req.Name
-		fields = append(fields, "name")
-	}
-
-	if req.Logo != "" {
-		brand.Logo = req.Logo
-		fields = append(fields, "logo")
-	}
-
-	if len(fields) > 0 {
-		if err := db.Model(&brand).Select(fields).Updates(&brand).Error; err != nil {
-			return nil, brandDBError(ctx, err, "更新品牌失败")
+		var fields []string
+		if req.Name != "" {
+			brand.Name = req.Name
+			fields = append(fields, "name")
 		}
+
+		if req.Logo != "" {
+			brand.Logo = req.Logo
+			fields = append(fields, "logo")
+		}
+
+		if len(fields) > 0 {
+			return tx.Model(&brand).Select(fields).Updates(&brand).Error
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, brandDBError(ctx, err, "更新品牌失败")
 	}
 	return &emptypb.Empty{}, nil
 }

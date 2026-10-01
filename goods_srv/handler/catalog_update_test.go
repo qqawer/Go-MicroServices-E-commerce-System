@@ -63,17 +63,19 @@ func TestCatalogUpdatesReportDatabaseFailures(t *testing.T) {
 		},
 	}
 	for name, call := range operations {
-		for _, stage := range []string{"lookup", "write", "commit", "missing", "canceled"} {
+		for _, stage := range []string{"begin", "lookup", "write", "commit", "missing", "unchanged", "canceled"} {
 			t.Run(name+"/"+stage, func(t *testing.T) {
 				mock := catalogDatabase(t)
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 				failure := errors.New("private SQL failure")
 				want := codes.Internal
-				if name == "category" && stage != "canceled" {
+				if stage != "canceled" && stage != "begin" {
 					mock.ExpectBegin()
 				}
 				switch stage {
+				case "begin":
+					mock.ExpectBegin().WillReturnError(failure)
 				case "lookup":
 					mock.ExpectQuery("SELECT").WillReturnError(failure)
 				case "missing":
@@ -84,18 +86,19 @@ func TestCatalogUpdatesReportDatabaseFailures(t *testing.T) {
 					want = codes.Canceled
 				default:
 					mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "logo", "is_tab"}).AddRow(7, "Old", "https://example.invalid/old.png", true))
-					if name != "category" {
-						mock.ExpectBegin()
-					}
 					if stage == "write" {
 						mock.ExpectExec("UPDATE").WillReturnError(failure)
 						mock.ExpectRollback()
+					} else if stage == "unchanged" {
+						mock.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 0))
+						mock.ExpectCommit()
+						want = codes.OK
 					} else {
 						mock.ExpectExec("UPDATE").WillReturnResult(sqlmock.NewResult(0, 1))
 						mock.ExpectCommit().WillReturnError(failure)
 					}
 				}
-				if name == "category" && (stage == "lookup" || stage == "missing") {
+				if stage == "lookup" || stage == "missing" {
 					mock.ExpectRollback()
 				}
 				if err := call(ctx); status.Code(err) != want || strings.Contains(status.Convert(err).Message(), "private SQL") {

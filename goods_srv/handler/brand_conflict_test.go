@@ -22,9 +22,14 @@ func TestBrandNameConflictsHaveOneSafeResult(t *testing.T) {
 			if stage != "insert" {
 				rows.AddRow(7, "Existing")
 			}
+			if stage == "update" {
+				mock.ExpectBegin()
+			}
 			mock.ExpectQuery("SELECT").WillReturnRows(rows)
 			if stage != "precheck" {
-				mock.ExpectBegin()
+				if stage == "insert" {
+					mock.ExpectBegin()
+				}
 				write := "INSERT"
 				if stage == "update" {
 					write = "UPDATE"

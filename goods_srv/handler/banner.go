@@ -85,31 +85,34 @@ func (g *GoodsServer) DeleteBanner(ctx context.Context, req *proto.BannerRequest
 
 //UpdateBanner 更新轮播图
 func (g *GoodsServer) UpdateBanner(ctx context.Context, req *proto.BannerRequest) (*emptypb.Empty, error) {
-	db := global.DB.WithContext(ctx)
-	var banner model.Banner
-	if err := db.First(&banner, req.Id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, status.Errorf(codes.NotFound, "轮播图不存在")
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var banner model.Banner
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&banner, req.Id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return status.Errorf(codes.NotFound, "轮播图不存在")
+			}
+			return err
 		}
-		return nil, catalogDBError(ctx, err, "查询轮播图失败")
-	}
-	var fields []string
-	if req.Image != "" {
-		banner.Image = req.Image
-		fields = append(fields, "image")
-	}
-	if req.Index >= 0 {
-		banner.Index = req.Index
-		fields = append(fields, "index")
-	}
-	if req.Url != "" {
-		banner.Url = req.Url
-		fields = append(fields, "url")
-	}
-	if len(fields) > 0 {
-		if err := db.Model(&banner).Select(fields).Updates(&banner).Error; err != nil {
-			return nil, catalogDBError(ctx, err, "更新轮播图失败")
+		var fields []string
+		if req.Image != "" {
+			banner.Image = req.Image
+			fields = append(fields, "image")
 		}
+		if req.Index >= 0 {
+			banner.Index = req.Index
+			fields = append(fields, "index")
+		}
+		if req.Url != "" {
+			banner.Url = req.Url
+			fields = append(fields, "url")
+		}
+		if len(fields) > 0 {
+			return tx.Model(&banner).Select(fields).Updates(&banner).Error
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, catalogDBError(ctx, err, "更新轮播图失败")
 	}
 	return &emptypb.Empty{}, nil
 }
