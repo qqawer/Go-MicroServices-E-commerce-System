@@ -1,0 +1,35 @@
+name: grpctest-es-lab
+
+services:
+  es:
+    build: .
+    image: grpctest-es-lab:8.19.22-smartcn
+    environment:
+      cluster.name: grpctest-es-lab
+      node.name: es-lab-01
+      discovery.type: single-node
+      # Synthetic data, dedicated network, loopback port: local learning only.
+      xpack.security.enabled: "false"
+      xpack.ml.enabled: "false"
+      ingest.geoip.downloader.enabled: "false"
+      ES_JAVA_OPTS: -Xms1g -Xmx1g
+    ports:
+      - "127.0.0.1:9201:9200"
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: 2
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    networks: [lab]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=green&timeout=2s' >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+    stop_grace_period: 30s
+
+networks:
+  lab: {}
+
+volumes:
+  es-data:
