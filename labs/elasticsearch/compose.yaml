@@ -28,6 +28,25 @@ services:
       retries: 40
     stop_grace_period: 30s
 
+  mysql:
+    profiles: [compare]
+    image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: es_lab
+    command: ["--innodb-buffer-pool-size=64M", "--performance-schema=OFF"]
+    # No host port; root is used only by docker compose exec inside this container.
+    tmpfs:
+      - /var/lib/mysql:size=512m
+    mem_limit: 768m
+    cpus: 1
+    networks: [lab]
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -uroot -Nse 'SELECT 1' es_lab >/dev/null"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
 networks:
   lab: {}
 

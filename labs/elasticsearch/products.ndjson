@@ -1,0 +1,40 @@
+{"id": 1, "name": "苹果手机 128G", "brief": "双卡拍照，日常通信", "category": "phone", "brand": "apple", "price_cents": 599900, "on_sale": true, "inventory_ready": true}
+{"id": 2, "name": "苹果 智能 手机 256G", "brief": "大容量，高清拍照", "category": "phone", "brand": "apple", "price_cents": 699900, "on_sale": true, "inventory_ready": true}
+{"id": 3, "name": "红富士苹果 5斤", "brief": "脆甜水果，产地直发", "category": "fruit", "brand": "orchard", "price_cents": 4990, "on_sale": true, "inventory_ready": true}
+{"id": 4, "name": "青苹果 3斤", "brief": "酸甜水果，适合榨汁", "category": "fruit", "brand": "orchard", "price_cents": 2990, "on_sale": true, "inventory_ready": true}
+{"id": 5, "name": "华为手机 256G", "brief": "安卓系统，日常通信", "category": "phone", "brand": "huawei", "price_cents": 399900, "on_sale": true, "inventory_ready": true}
+{"id": 6, "name": "苹果手机保护壳", "brief": "透明外壳，保护机身", "category": "accessory", "brand": "shell", "price_cents": 2990, "on_sale": true, "inventory_ready": true}
+{"id": 7, "name": "水果礼盒", "brief": "内含红富士苹果和香梨", "category": "fruit", "brand": "orchard", "price_cents": 9900, "on_sale": true, "inventory_ready": true}
+{"id": 8, "name": "安卓备用机", "brief": "轻巧手机，适合备用", "category": "phone", "brand": "android", "price_cents": 69900, "on_sale": true, "inventory_ready": true}
+{"id": 9, "name": "下架苹果手机", "brief": "演示上架状态过滤", "category": "phone", "brand": "apple", "price_cents": 499900, "on_sale": false, "inventory_ready": true}
+{"id": 10, "name": "未备货苹果手机", "brief": "演示库存准备状态过滤", "category": "phone", "brand": "apple", "price_cents": 499900, "on_sale": true, "inventory_ready": false}
+{"id": 11, "name": "有线耳机", "brief": "适配苹果手机接口", "category": "accessory", "brand": "sound", "price_cents": 9900, "on_sale": true, "inventory_ready": true}
+{"id": 12, "name": "苹果果汁", "brief": "水果饮料，无添加糖", "category": "drink", "brand": "orchard", "price_cents": 1590, "on_sale": true, "inventory_ready": true}
+{"id": 13, "name": "小米手机 128G", "brief": "安卓系统，长续航", "category": "phone", "brand": "xiaomi", "price_cents": 199900, "on_sale": true, "inventory_ready": true}
+{"id": 14, "name": "荣耀手机 256G", "brief": "安卓系统，高清屏幕", "category": "phone", "brand": "honor", "price_cents": 299900, "on_sale": true, "inventory_ready": true}
+{"id": 15, "name": "香蕉 3斤", "brief": "新鲜水果", "category": "fruit", "brand": "orchard", "price_cents": 1990, "on_sale": true, "inventory_ready": true}
+{"id": 16, "name": "香梨 5斤", "brief": "新鲜水果，清甜多汁", "category": "fruit", "brand": "orchard", "price_cents": 3990, "on_sale": true, "inventory_ready": true}
+{"id": 17, "name": "橙子 5斤", "brief": "新鲜水果，维生素丰富", "category": "fruit", "brand": "orchard", "price_cents": 4990, "on_sale": true, "inventory_ready": true}
+{"id": 18, "name": "草莓 1斤", "brief": "新鲜水果，当日采摘", "category": "fruit", "brand": "orchard", "price_cents": 3590, "on_sale": true, "inventory_ready": true}
+{"id": 19, "name": "蓝莓 2盒", "brief": "新鲜水果，冷链配送", "category": "fruit", "brand": "orchard", "price_cents": 4590, "on_sale": true, "inventory_ready": true}
+{"id": 20, "name": "西瓜 1个", "brief": "新鲜水果，夏日清凉", "category": "fruit", "brand": "orchard", "price_cents": 2590, "on_sale": true, "inventory_ready": true}
+{"id": 21, "name": "无线耳机", "brief": "蓝牙连接，通勤使用", "category": "accessory", "brand": "sound", "price_cents": 19900, "on_sale": true, "inventory_ready": true}
+{"id": 22, "name": "手机支架", "brief": "桌面配件，可调角度", "category": "accessory", "brand": "stand", "price_cents": 3900, "on_sale": true, "inventory_ready": true}
+{"id": 23, "name": "手机充电器", "brief": "快充配件，便携设计", "category": "accessory", "brand": "power", "price_cents": 6900, "on_sale": true, "inventory_ready": true}
+{"id": 24, "name": "手机数据线", "brief": "充电配件，编织线身", "category": "accessory", "brand": "power", "price_cents": 2900, "on_sale": true, "inventory_ready": true}
+{"id": 25, "name": "平板电脑", "brief": "大屏阅读，学习办公", "category": "tablet", "brand": "tabletco", "price_cents": 259900, "on_sale": true, "inventory_ready": true}
+{"id": 26, "name": "笔记本电脑", "brief": "轻薄便携，学习办公", "category": "computer", "brand": "pc", "price_cents": 499900, "on_sale": true, "inventory_ready": true}
+{"id": 27, "name": "机械键盘", "brief": "办公配件，舒适手感", "category": "accessory", "brand": "keys", "price_cents": 29900, "on_sale": true, "inventory_ready": true}
+{"id": 28, "name": "无线鼠标", "brief": "办公配件，静音设计", "category": "accessory", "brand": "keys", "price_cents": 9900, "on_sale": true, "inventory_ready": true}
+{"id": 29, "name": "高清显示器", "brief": "办公显示，护眼模式", "category": "computer", "brand": "screen", "price_cents": 89900, "on_sale": true, "inventory_ready": true}
+{"id": 30, "name": "智能手表", "brief": "记录运动，消息提醒", "category": "wearable", "brand": "watch", "price_cents": 79900, "on_sale": true, "inventory_ready": true}
+{"id": 31, "name": "苹果", "brief": "字段权重对照商品", "category": "demo", "brand": "demo", "price_cents": 100, "on_sale": true, "inventory_ready": true}
+{"id": 32, "name": "字段权重对照商品", "brief": "苹果", "category": "demo", "brand": "demo", "price_cents": 100, "on_sale": true, "inventory_ready": true}
+{"id": 33, "name": "牛奶 12盒", "brief": "早餐饮品，常温保存", "category": "drink", "brand": "dairy", "price_cents": 5900, "on_sale": true, "inventory_ready": true}
+{"id": 34, "name": "酸奶 6杯", "brief": "早餐饮品，冷藏保存", "category": "drink", "brand": "dairy", "price_cents": 3900, "on_sale": true, "inventory_ready": true}
+{"id": 35, "name": "咖啡豆 250克", "brief": "烘焙饮品原料", "category": "drink", "brand": "coffee", "price_cents": 6900, "on_sale": true, "inventory_ready": true}
+{"id": 36, "name": "矿泉水 24瓶", "brief": "日常饮用水", "category": "drink", "brand": "water", "price_cents": 2900, "on_sale": true, "inventory_ready": true}
+{"id": 37, "name": "茶叶礼盒", "brief": "绿茶，适合送礼", "category": "drink", "brand": "tea", "price_cents": 19900, "on_sale": true, "inventory_ready": true}
+{"id": 38, "name": "运动鞋", "brief": "轻便透气，适合跑步", "category": "clothing", "brand": "sport", "price_cents": 29900, "on_sale": true, "inventory_ready": true}
+{"id": 39, "name": "棉质短袖", "brief": "日常服装，柔软透气", "category": "clothing", "brand": "cotton", "price_cents": 7900, "on_sale": true, "inventory_ready": true}
+{"id": 40, "name": "帆布背包", "brief": "日常通勤，轻便收纳", "category": "bag", "brand": "canvas", "price_cents": 12900, "on_sale": true, "inventory_ready": true}
