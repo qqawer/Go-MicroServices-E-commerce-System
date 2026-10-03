@@ -9,14 +9,19 @@
 - 官方 Go 客户端：`github.com/elastic/go-elasticsearch/v8 v8.19.7`，锁定于本目录 `go.mod/go.sum`；本机 Go `1.25.6`。商城根模块原有 `olivere/elastic/v7` 不在本批迁移。
 - ES 容器：2 CPU、2 GiB 内存上限、1 GiB JVM 堆；Docker 的全部内存不等于 ES 能任意使用的内存。
 - ES 地址：`http://127.0.0.1:9201`；没有发布 9300，专用 bridge 网络 `grpctest-es-lab_lab`。
-- ES 数据：专用卷 `grpctest-es-lab_es-data` → 容器 `/usr/share/elasticsearch/data`；Docker Desktop 的卷位于 Linux VM 内，不是 Mac 同名目录。
+- 可选 Kibana：`8.19.22`，镜像固定 digest，`ui` profile 启用；本机入口 `http://127.0.0.1:5601`，限制 2 CPU / 2 GiB，连接同一网络内的 `http://es:9200`。
+- ES 配置：Mac 的 `grpctest/.local/es-lab/elasticsearch/config` → 容器 `/usr/share/elasticsearch/config`。
+- ES 数据：Mac 的 `grpctest/.local/es-lab/elasticsearch/data` → 容器 `/usr/share/elasticsearch/data`。两者均为目录绑定挂载，不依赖容器自身文件层。
 - 本地合成数据实验关闭 ES 身份认证/TLS。此配置仅限本机实验，不用于 AWS 部署。
 
 在 RPC 仓库根目录执行：
 
 ```bash
 cd labs/elasticsearch
-docker compose up -d --build --wait --wait-timeout 180
+# 首次准备；prepare-dirs.sh 应在 ES 停止时运行。
+docker compose build es
+bash prepare-dirs.sh
+docker compose up -d --no-build --wait --wait-timeout 180
 go run .
 curl -fsS 'http://127.0.0.1:9201/_cluster/health?pretty'
 docker compose exec -T es bin/elasticsearch-plugin list
@@ -26,13 +31,24 @@ docker compose ps
 生命周期：
 
 ```bash
-docker compose --profile compare stop          # 停止实验；ES 数据保留，MySQL tmpfs 清空
-docker compose --profile compare start --wait  # 继续使用 ES；SQL 对照需重新 seed
-docker compose --profile compare down         # 删除实验容器与网络，保留 ES 数据卷
-docker compose --profile compare down -v       # 清空本实验的数据卷；下次需重新 seed
+docker compose --profile '*' stop          # 停止全部实验容器；ES 数据保留，MySQL tmpfs 清空
+docker compose --profile '*' start --wait  # 启动已创建的实验容器；SQL 对照需重新 seed
+docker compose --profile '*' down         # 删除实验容器与网络，保留 Mac 的 config/data
 ```
 
-不要改项目名、复用商城 Compose，或删除机器上其他旧 ES 容器/卷。
+需要清空 ES 重练时，先 `down`，将 Mac 上的 `elasticsearch` 目录改名备份，再执行 `bash prepare-dirs.sh` 和启动命令；目录挂载不会被 `docker compose down -v` 删除。不要改项目名、复用商城 Compose，或删除机器上其他旧 ES 容器/卷。
+
+本机实际目录：
+
+```text
+/Users/outsider/Downloads/Golang_Development/grpctest/.local/es-lab/elasticsearch/
+├── config/   # elasticsearch.yml、jvm.options、keystore 等配置
+└── data/     # ES 管理的索引数据文件，不手工修改里面的文件
+```
+
+`prepare-dirs.sh` 从固定版本实验镜像补齐初始配置，已有 `elasticsearch.yml` 时保留原配置；同时让 Mac 用户拥有文件，ES 容器通过 GID 0 读写。`.local/` 被 Git 忽略，不提交数据与 keystore。若修改 `elasticsearch.yml`，也需留意 Compose `environment` 中的同名启动配置。
+
+2026-10-03 按学习需求从 Docker 命名卷迁移到上述目录：先停止 Kibana 和 ES，再复制完整 config/data；原卷 `grpctest-es-lab_es-data` 保留为迁移前备份，已不在新 Compose 的挂载和清理范围内。
 
 版本依据：[Docker 安装](https://www.elastic.co/guide/en/elasticsearch/reference/8.19/docker.html)、[SmartCN](https://www.elastic.co/docs/reference/elasticsearch/plugins/analysis-smartcn)、[官方 Go 8.19 客户端](https://www.elastic.co/guide/en/elasticsearch/client/go-api/8.19/installation.html)、[v8.19.7 源码](https://github.com/elastic/go-elasticsearch/tree/v8.19.7)。客户端与服务端同为 8.19 系列；补丁号并不要求相等，实际连接由 `go run .` 验证。
 
@@ -55,6 +71,27 @@ export DOCKER_CONFIG="$PWD/.local/es-lab/docker"
 ```
 
 本机 Docker Desktop 的 `internal: true` 网络未发布宿主机端口，因此最终用专用 bridge 网络加 `127.0.0.1` 端口绑定，并由宿主机 Go 客户端验证可达。
+
+### 跟随语雀在 Kibana 中练习
+
+```bash
+docker compose --profile ui up -d --no-build --wait --wait-timeout 300 kibana
+docker compose stop kibana  # 只停 Kibana，ES 继续运行
+```
+
+首次需下载镜像；若本机凭据助手阻塞，使用上面的临时 Docker 配置。浏览器打开 [Dev Tools](http://127.0.0.1:5601/app/dev_tools#/console)，本地实验无需登录。左侧写 ES 请求，点击该请求旁的运行按钮，右侧查看 JSON 结果。先分两次执行：
+
+```http
+GET /
+
+GET _cat/indices?v
+```
+
+第一条确认连接的 ES 版本与集群名称，第二条查看索引；其中 `grpctest-es-lab-products` 是前面准备的实验商品。个人练习可另建 `yuque-practice` 索引，避免与重复运行的商品实验互相影响。Kibana 自己也会创建系统索引，用于保存界面配置。
+
+入口与连接关系是“浏览器 → localhost:5601 的 Kibana → Docker 网络中 es:9200”。宿主机 `localhost:9201` 是直接访问 ES 的入口，在 Dev Tools 中只写 `GET /…` 等请求路径即可。启动配置依据 [Kibana 8.19 Docker 文档](https://www.elastic.co/guide/en/kibana/8.19/docker.html)。
+
+语雀课程使用较旧版本和 IK；这里为 ES 8.19.22 + SmartCN。分词示例使用 `"analyzer": "smartcn"`，结果不承诺与 `ik_max_word/ik_smart` 相同；旧的自定义 mapping type 写法也不能直接照搬。遇到对应章节时再逐条核对，不提前更换当前分词器。
 
 ## 第 1 批：文档、分词、倒排索引
 
