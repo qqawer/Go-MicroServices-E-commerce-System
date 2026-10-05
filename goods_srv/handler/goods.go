@@ -56,6 +56,12 @@ func ModelToResponse(goods model.Goods) proto.GoodsInfoResponse {
 
 // // 商品接口
 func (s *GoodsServer) GoodsList(ctx context.Context, req *proto.GoodsFilterRequest) (*proto.GoodsListResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "商品查询参数无效")
+	}
+	if req.StoreVisibleOnly && global.EsClient != nil {
+		return searchStoreGoods(ctx, req)
+	}
 	//关键词搜索、查询新品、查询热门商品、通过价格区间筛选， 通过商品分类筛选
 	goodsListResponse := &proto.GoodsListResponse{}
 

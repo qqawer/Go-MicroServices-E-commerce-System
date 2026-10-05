@@ -1,0 +1,15 @@
+{
+  "name": "goods-es-demo",
+  "mysql": {
+    "host": "mysql",
+    "port": "3306",
+    "name": "es_store_demo",
+    "user": "root",
+    "password": ""
+  },
+  "elasticsearch": {
+    "enabled": true,
+    "url": "http://es:9200",
+    "index": "grpctest-goods-store-demo"
+  }
+}

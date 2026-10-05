@@ -252,4 +252,5 @@ func TestGoodsESHooksIntegration(t *testing.T) {
 		t.Fatalf("an already-absent ES document should allow MySQL deletion: %v", err)
 	}
 	t.Log("PASS an already-absent ES document does not block deletion")
+	verifyStoreSearch(t, db, esRequest)
 }

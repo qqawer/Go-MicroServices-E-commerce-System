@@ -289,6 +289,7 @@ message GoodsInfoResponse {
 message GoodsListResponse {
     int32 total = 1;
     repeated GoodsInfoResponse data = 2;
+    bool search_index = 3; // total 为 ES 命中数；MySQL 核对后可能不足一页。
 }
 message GoodsInventoryResponse {
     int32 goodsId = 1;
