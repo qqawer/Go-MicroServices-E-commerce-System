@@ -40,7 +40,7 @@ func (s *GoodsServer) UpdateGoods(ctx context.Context, req *proto.CreateGoodsInf
 		}
 		// Explicit columns preserve states, counters and stock, and never save
 		// category/brand associations. A map also writes false and empty values.
-		return tx.Model(&model.Goods{}).Where("id = ?", req.Id).Updates(map[string]interface{}{
+		return tx.Model(&model.Goods{BaseModel: model.BaseModel{ID: req.Id}}).Updates(map[string]interface{}{
 			"category_id": req.CategoryId, "brands_id": req.BrandId,
 			"name": req.Name, "goods_sn": req.GoodsSn,
 			"market_price": req.MarketPrice, "shop_price": req.ShopPrice,
@@ -75,7 +75,7 @@ func (s *GoodsServer) UpdateGoodsStatus(ctx context.Context, req *proto.UpdateGo
 		if err := lockGoodsForUpdate(tx, req.Id); err != nil {
 			return err
 		}
-		return tx.Model(&model.Goods{}).Where("id = ?", req.Id).Updates(fields).Error
+		return tx.Model(&model.Goods{BaseModel: model.BaseModel{ID: req.Id}}).Updates(fields).Error
 	})
 	return goodsUpdateResult(ctx, err)
 }

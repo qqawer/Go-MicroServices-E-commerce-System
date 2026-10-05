@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"grpctest/goods_srv/global"
@@ -31,6 +32,12 @@ func main() {
 	initialize.InitLogger()
 	initialize.InitConfig()
 	initialize.InitDB()
+	if err := initialize.InitES(global.ServerConfig.Elasticsearch); err != nil {
+		panic(err)
+	}
+	if global.EsClient != nil {
+		defer global.EsClient.Close(context.Background())
+	}
 
 	flag.Parse()
 	zap.S().Info("ip:", *IP)

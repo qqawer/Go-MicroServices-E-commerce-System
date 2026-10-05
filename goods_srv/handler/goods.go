@@ -175,7 +175,7 @@ func (s *GoodsServer) DeleteGoods(ctx context.Context, req *proto.DeleteGoodsInf
 	if req == nil || req.Id <= 0 {
 		return nil, status.Error(codes.InvalidArgument, "商品 ID 无效")
 	}
-	result := global.DB.WithContext(ctx).Delete(&model.Goods{}, req.Id)
+	result := global.DB.WithContext(ctx).Delete(&model.Goods{BaseModel: model.BaseModel{ID: req.Id}})
 	if result.Error != nil {
 		return nil, catalogDBError(ctx, result.Error, "删除商品结果未确认，请查询后重试")
 	}

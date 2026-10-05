@@ -3,6 +3,7 @@ package global
 import (
 	// model "grpctest/model/user"
 	"grpctest/goods_srv/config"
+	"github.com/elastic/go-elasticsearch/v8"
 	// "log"
 	// "os"
 	// "time"
@@ -16,6 +17,8 @@ var (
 	DB *gorm.DB
 	ServerConfig *config.ServerConfig
 	NacosConfig config.NacosConfig
+	EsClient *elasticsearch.BaseClient
+	EsIndex string
 )
 
 // func init() {

@@ -15,8 +15,15 @@ type InventoryConfig struct {
 	Name string `mapstructure:"name" json:"name"`
 }
 
+type ElasticsearchConfig struct {
+	Enabled bool   `mapstructure:"enabled" json:"enabled"`
+	URL     string `mapstructure:"url" json:"url"`
+	Index   string `mapstructure:"index" json:"index"`
+}
+
 type ServerConfig struct {
-	InventoryInfo InventoryConfig `mapstructure:"inventory_srv" json:"inventory_srv"`
+	InventoryInfo InventoryConfig     `mapstructure:"inventory_srv" json:"inventory_srv"`
+	Elasticsearch ElasticsearchConfig `mapstructure:"elasticsearch" json:"elasticsearch"`
 	//Host string `mapstructure:"host" json:"host"`
 	//Port int `mapstructure:"port" json:"port"`
 	//最后都会放到配置中心nacos去配置，这里就不配置这么多了
