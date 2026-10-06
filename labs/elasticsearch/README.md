@@ -7,7 +7,7 @@
 ## 第 0 批：环境与版本
 
 - ES：`8.19.22`，基础镜像固定多架构 digest，Mac ARM64 使用原生 arm64 镜像。
-- 中文分词：官方 `analysis-smartcn 8.19.22`，随镜像构建安装；不是 IK，也不预设两者切词相同。
+- 中文分词：镜像同时安装 `analysis-smartcn 8.19.22` 和 `analysis-ik 8.19.22`。40 条小实验、420 条历史快照继续用 SmartCN；2026-10-06 起本地商城演示改用 IK，见 [商品搜索说明](../../goods_srv/ES_SEARCH.md#2026-10-06切换为-ik)。
 - 官方 Go 客户端：`github.com/elastic/go-elasticsearch/v8 v8.19.7`，锁定于本目录 `go.mod/go.sum`；本机 Go `1.25.6`。商城根模块原有 `olivere/elastic/v7` 不在本批迁移。
 - ES 容器：2 CPU、2 GiB 内存上限、1 GiB JVM 堆；Docker 的全部内存不等于 ES 能任意使用的内存。
 - ES 地址：`http://127.0.0.1:9201`；没有发布 9300，专用 bridge 网络 `grpctest-es-lab_lab`。
@@ -48,7 +48,7 @@ docker compose --profile '*' down         # 删除实验容器与网络，保留
 └── data/     # ES 管理的索引数据文件，不手工修改里面的文件
 ```
 
-`prepare-dirs.sh` 从固定版本实验镜像补齐初始配置，已有 `elasticsearch.yml` 时保留原配置；同时让 Mac 用户拥有文件，ES 容器通过 GID 0 读写。`.local/` 被 Git 忽略，不提交数据与 keystore。若修改 `elasticsearch.yml`，也需留意 Compose `environment` 中的同名启动配置。
+`prepare-dirs.sh` 从固定版本实验镜像补齐初始配置，已有 `elasticsearch.yml` 时保留原配置；缺少 `analysis-ik/` 时单独补齐 IK 默认配置和词典；同时让 Mac 用户拥有文件，ES 容器通过 GID 0 读写。`.local/` 被 Git 忽略，不提交数据与 keystore。若修改 `elasticsearch.yml`，也需留意 Compose `environment` 中的同名启动配置。
 
 2026-10-03 按学习需求从 Docker 命名卷迁移到上述目录：先停止 Kibana 和 ES，再复制完整 config/data；原卷 `grpctest-es-lab_es-data` 保留为迁移前备份，已不在新 Compose 的挂载和清理范围内。
 
@@ -93,7 +93,7 @@ GET _cat/indices?v
 
 入口与连接关系是“浏览器 → localhost:5601 的 Kibana → Docker 网络中 es:9200”。宿主机 `localhost:9201` 是直接访问 ES 的入口，在 Dev Tools 中只写 `GET /…` 等请求路径即可。启动配置依据 [Kibana 8.19 Docker 文档](https://www.elastic.co/guide/en/kibana/8.19/docker.html)。
 
-语雀课程使用较旧版本和 IK；这里为 ES 8.19.22 + SmartCN。分词示例使用 `"analyzer": "smartcn"`，结果不承诺与 `ik_max_word/ik_smart` 相同；旧的自定义 mapping type 写法也不能直接照搬。遇到对应章节时再逐条核对，不提前更换当前分词器。
+语雀课程使用较旧版本和 IK。当前 ES 8.19.22 已同时支持 `smartcn`、`ik_max_word`、`ik_smart`，可在 `_analyze` 中分别比较。下面的 40 条实验和历史结果仍使用 SmartCN；旧的自定义 mapping type 写法不能直接照搬。IK 的配置和默认词典已挂载到 `.local/es-lab/elasticsearch/config/analysis-ik/`；安装插件不等于已有字段自动改用它。
 
 ## 第 1 批：文档、分词、倒排索引
 

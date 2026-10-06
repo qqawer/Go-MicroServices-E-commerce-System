@@ -24,8 +24,8 @@ func (EsGoods) GetMapping() string {
     "dynamic": "strict",
     "properties": {
       "id": {"type": "long"},
-      "name": {"type": "text", "analyzer": "smartcn", "fields": {"raw": {"type": "keyword"}}},
-      "brief": {"type": "text", "analyzer": "smartcn"},
+      "name": {"type": "text", "analyzer": "ik_max_word", "fields": {"raw": {"type": "keyword"}}},
+      "brief": {"type": "text", "analyzer": "ik_max_word"},
       "category_id": {"type": "long"},
       "brand_id": {"type": "long"},
       "price_cents": {"type": "long", "coerce": false},

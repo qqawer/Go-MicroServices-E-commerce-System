@@ -41,7 +41,7 @@ ES 超时、分片失败或不可用不会回退到 LIKE 并伪装成功：依�
 | 商品 HTTP | `127.0.0.1:18022`，复用真实查询 handler，仅注册商品列表、详情、分类 GET 路由 |
 | 商品 RPC | `127.0.0.1:15052` → Docker `grpctest-es-store-goods-rpc:50052`，复用真实 GoodsServer |
 | MySQL | 既有本地实验容器，新建独立库 `es_store_demo` |
-| ES | 既有 `127.0.0.1:9201`，独立索引 `grpctest-goods-store-demo` |
+| ES | 既有 `127.0.0.1:9201`，独立索引 `grpctest-goods-store-demo-ik` |
 | 实际服务配置 | `grpctest/.local/es-lab/store-search/config.json`，`elasticsearch.enabled=true` |
 
 启动入口是两仓的 `cmd/goods-es-demo/main.go`。RPC 使用本地 JSON 配置，跳过云端 Nacos/Consul 注册；正常商品服务的 Nacos 入口仍然可用。演示商品的库存准备状态是**明确设置的测试条件**，没有启动真实库存、用户、购物车、订单或支付链路。前端演示代理也只指向本地只读 HTTP，不能通过此入口登录、下单。
@@ -55,11 +55,56 @@ ES 超时、分片失败或不可用不会回退到 LIKE 并伪装成功：依�
 3. 搜索“火星探测器”：0 件。
 4. 清除筛选：16 件，每页 12 件，第二页剩 4 件。
 
-Kibana 可以执行 `GET /grpctest-goods-store-demo/_search` 查看对应索引。原来的快照索引 `grpctest-goods-snapshot-20261005` 仍是 420 条，不能把其未知库存状态直接设为真实可售。
+Kibana 可以执行 `GET /grpctest-goods-store-demo-ik/_search` 查看对应索引。原来的快照索引 `grpctest-goods-snapshot-20261005` 仍是 420 条，不能把其未知库存状态直接设为真实可售。
+
+## 2026-10-06：切换为 IK
+
+此前名称和简介已经使用中文 SmartCN，并非默认英文分词。现在对照本地 mxshop `2bbe1b3a0eaa59bf26a3a2047769979a0e206c11` 的 `mxshop_srvs/goods_srv/model/es_goods.go`，两个字段改为 `ik_max_word`；与 mxshop 一样未单独覆盖 `search_analyzer`，写入与全文查询都使用它。查询仍是默认 OR，搜索“青苹果手机”也可能匹配含“苹果”的水果。
+
+安装来源是 [IK 维护方](https://github.com/infinilabs/analysis-ik) 的 `https://get.infini.cloud/elasticsearch/analysis-ik/8.19.22`。已检查安装包内 `elasticsearch.version=8.19.22`，Dockerfile 固定包 SHA-256 `2cf38b4e21af1514dc30b7b641d630f9cf3bfc02479985185e36050e61bfda23`。镜像同时保留 SmartCN，容器重建后两个插件均为 8.19.22。安装器提示包仍含旧式 Security Policy；本轮运行验证通过，此提示不代表未来 ES 版本兼容。
+
+IK 默认配置和词典位于宿主机 `.local/es-lab/elasticsearch/config/analysis-ik/`，其中 `IKAnalyzer.cfg.xml` 可配置扩展词典。本轮未添加自定义词典或远程词典；目录权限沿用 UID/GID 的共享方式，不使用 `chmod 777`。
+
+迁移时先备份配置、RPC 二进制和原索引文档，再停止本地演示 RPC、重建 ES。因为已有字段不能原地更换索引分词器，演示 RPC 使用新索引 `grpctest-goods-store-demo-ik`，启动时从同一个 `es_store_demo` MySQL 库读取 16 条商品，经原有索引写入逻辑重新写入。没有重新造商品或修改 SQL 字段；搜索框、Web、gRPC 接口及 GORM 钩子流程保持一致。
+
+原 `grpctest-goods-store-demo` 保留为切换时的 SmartCN 对照，不再接收演示商品更新；40 条小实验与 420 条快照仍使用原索引。保留的旧索引不是自动回滚开关：商品变动后回切仍需补齐数据。回退本轮可使用 `.local/es-lab/ik-migration/` 中的旧 RPC 二进制和配置，恢复旧索引前核对数据。
+
+实际验证：
+
+- `_analyze`：“青苹果手机”用 SmartCN 得到“青 / 苹果 / 手机”，IK max 得到“青苹果 / 苹果 / 手机”；“中国科学技术大学”用 IK smart 得到完整词，IK max 得到“中国科学技术大学 / 中国 / 科学技术 / 科学 / 技术 / 大学”。
+- 新索引的 16 个 ID 和全部业务字段与切换前一致；原 40、420、16 条文档逐项核对一致。
+- 真实 HTTP：“苹果”5 件，加数码分类 2 件；“火星探测器”0 件；全部商品第 2 页 4 件，总数 16，响应 `search_index=true`。
+- Chrome 搜索框实际输入“青苹果手机”后显示约 5 件，“青苹果手机 128G”排第一。
+- 既有真实 MySQL/ES/gRPC 集成测试通过，覆盖钩子同步、中文检索、筛选、分页、陈旧索引校验及故障回滚。RPC `bash ci/check.sh` 通过。ES healthy，Kibana available。
+
+证据保存在 `.local/es-lab/ik-migration/`，包括 `analyze.json`、`http-checks.json`、`integration.log` 和 `ci.log`。本次是本地演示切换，不代表云端部署；阶段 5 整体验收仍另行推进。
+
+Kibana 可直接执行：
+
+```http
+GET _analyze
+{
+  "analyzer": "ik_max_word",
+  "text": "中国科学技术大学"
+}
+
+GET /grpctest-goods-store-demo-ik/_mapping
+```
+
+已有环境升级时，在 RPC 仓库根目录先备份 `.local/es-lab/store-search/` 和 ES config，再执行：
+
+```sh
+docker compose -f labs/elasticsearch/compose.yaml build es
+docker stop grpctest-es-store-goods-rpc grpctest-es-lab-es-1
+bash labs/elasticsearch/prepare-dirs.sh
+docker compose -f labs/elasticsearch/compose.yaml up -d --no-build --no-deps --wait es
+```
+
+随后将本地演示 JSON 的 `elasticsearch.index` 改成 `grpctest-goods-store-demo-ik`，按下文命令重编译覆盖原 RPC 二进制，然后 `docker start grpctest-es-store-goods-rpc`。首次启动仍按下文完整命令；不要重新创建同名 RPC 容器。
 
 ## 复现与停止
 
-前提：按 [实验 README](../labs/elasticsearch/README.md) 启动本地 MySQL、ES、SmartCN。下列为首次启动；本轮服务已经运行，不要重复占用端口。
+前提：按 [实验 README](../labs/elasticsearch/README.md) 启动本地 MySQL、ES、IK。下列为首次启动；本轮服务已经运行，不要重复占用端口。
 
 在 `grpctest` 根目录：
 

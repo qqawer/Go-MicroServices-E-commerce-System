@@ -23,7 +23,7 @@
 | 文件 | 本批职责 |
 | --- | --- |
 | [model/goods_es_hooks.go](model/goods_es_hooks.go) | 三个钩子、完整文档读取、ES 写入与删除、错误返回 |
-| [model/es_goods.go](model/es_goods.go) | 搜索字段和 SmartCN Mapping，与阶段 2 导入的字段兼容 |
+| [model/es_goods.go](model/es_goods.go) | 搜索字段和 IK Mapping；数据字段与阶段 2 一致，分词器已不同 |
 | [initialize/es.go](initialize/es.go) | 建立官方 Go ES v8.19.7 客户端；启动时创建或核对索引 |
 | [config/config.go](config/config.go)、[main.go](main.go) | 读取启用开关、地址、索引名，并在服务启动时初始化 |
 | [handler/goods_update.go](handler/goods_update.go)、[handler/goods.go](handler/goods.go) | 更新和删除时给 GORM 模型带上商品 ID，供钩子定位文档 |
@@ -47,7 +47,7 @@
 }
 ```
 
-上面是插入现有 JSON 对象的一个字段，保留原有 MySQL、库存等设置。地址适用于商品服务直接在 Mac 上运行；若服务加入本地实验 Docker 网络，则使用 `http://es:9200`。启用后重启商品服务；ES 需要安装 SmartCN。初始化时索引不存在便创建，字段映射不兼容或连接失败则启动报错。
+上面是插入现有 JSON 对象的一个字段，保留原有 MySQL、库存等设置。地址适用于商品服务直接在 Mac 上运行；若服务加入本地实验 Docker 网络，则使用 `http://es:9200`。启用后重启商品服务；ES 需要安装与服务端版本一致的 IK。已有 SmartCN 索引需换成新索引并重新导入；不能原地修改 `analyzer`，当前初始化检查会拒绝旧分词配置。420 条快照导入命令仍用于 SmartCN 教学对照，不能直接当作 IK 索引初始化器。初始化时索引不存在便创建，字段映射不兼容或连接失败则启动报错。
 
 现有配置缺少这一段时，同步保持关闭。此批没有修改云端 Nacos 或部署业务服务。启用前将同一个业务数据库的现有数据导入同一个目标索引，并暂停写入完成切换；不能把历史快照索引混用于另一个数据库。
 

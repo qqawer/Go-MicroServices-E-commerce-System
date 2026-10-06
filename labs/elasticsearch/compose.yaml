@@ -3,7 +3,7 @@ name: grpctest-es-lab
 services:
   es:
     build: .
-    image: grpctest-es-lab:8.19.22-smartcn
+    image: grpctest-es-lab:8.19.22-smartcn-ik
     environment:
       cluster.name: grpctest-es-lab
       node.name: es-lab-01

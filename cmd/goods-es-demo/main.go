@@ -36,7 +36,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if cfg.MysqlInfo.Host != "mysql" || cfg.MysqlInfo.Name != "es_store_demo" ||
-		cfg.Elasticsearch.URL != "http://es:9200" || cfg.Elasticsearch.Index != "grpctest-goods-store-demo" || !cfg.Elasticsearch.Enabled {
+		cfg.Elasticsearch.URL != "http://es:9200" || cfg.Elasticsearch.Index != "grpctest-goods-store-demo-ik" || !cfg.Elasticsearch.Enabled {
 		log.Fatal("this runner requires the isolated es_store_demo database and ES lab target")
 	}
 	global.ServerConfig = &cfg

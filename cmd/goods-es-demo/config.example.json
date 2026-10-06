@@ -10,6 +10,6 @@
   "elasticsearch": {
     "enabled": true,
     "url": "http://es:9200",
-    "index": "grpctest-goods-store-demo"
+    "index": "grpctest-goods-store-demo-ik"
   }
 }

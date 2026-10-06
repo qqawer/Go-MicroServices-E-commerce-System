@@ -10,9 +10,12 @@ mkdir -p "$lab_storage/config" "$lab_storage/data"
 # the ES container runs as UID 1000, GID 0 and accesses the shared group.
 docker run --rm --user 0 --entrypoint /bin/bash \
   --mount "type=bind,source=$lab_storage,target=/lab" \
-  grpctest-es-lab:8.19.22-smartcn -c '
+  grpctest-es-lab:8.19.22-smartcn-ik -c '
     if [ ! -f /lab/config/elasticsearch.yml ]; then
       cp -a /usr/share/elasticsearch/config/. /lab/config/
+    fi
+    if [ ! -d /lab/config/analysis-ik ]; then
+      cp -a /usr/share/elasticsearch/config/analysis-ik /lab/config/
     fi
     chown -R "$1":0 /lab/config /lab/data
     chmod -R u+rwX,g+rwX,o-rwx /lab/config /lab/data
