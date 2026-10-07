@@ -1,6 +1,6 @@
-# 阶段 5，第 1 批：一件商品的正常同步流程
+# 阶段 5：本地商品同步与搜索验收
 
-2026-10-07 在正在运行的本地学习环境逐步执行并核对。ES/IK 8.19.22，商品库 `es_store_demo`，索引 `grpctest-goods-store-demo-ik`，真实商品 RPC、HTTP 查询接口及商城学习页沿用 [ES_SEARCH.md](ES_SEARCH.md)。本批完成正常流程；故障恢复、进程重启等剩余验收继续分批进行。
+2026-10-07 分两批在正在运行的本地学习环境逐步执行并核对。ES/IK 8.19.22，商品库 `es_store_demo`，索引 `grpctest-goods-store-demo-ik`，真实商品 RPC、HTTP 查询接口及商城学习页沿用 [ES_SEARCH.md](ES_SEARCH.md)。第 1 批完成正常流程，第 2 批完成实际 ES 停机、恢复、手动重试和商品服务重启。本地学习验收完成；云端上线、真实库存链路另行验收。
 
 ## 为什么这样做
 
@@ -82,4 +82,72 @@ docker exec grpctest-es-lab-mysql-1 mysql --default-character-set=utf8mb4 -uroot
 
 每次结束都对本次创建的商品执行 delete；同时进行多个实验时，固定新名称可能匹配多件商品，应按 ID 核对。本机证据在 `.local/es-lab/stage5-normal/`，包含各步骤命令日志、`*-observed.json`、初始文档和最终商品列表。命令构建和 `go vet` 通过，业务实现本批没有修改。
 
-下一批：实际验证 ES 故障和恢复、手动重试及进程重启。完成剩余场景后再评估阶段 5 是否可以结束，不把本批标记为全部验收完成。
+## 第 2 批：实际 ES 故障、恢复和商品进程重启
+
+这批复用逐步操作命令，没有修改业务逻辑。新建测试商品 ID `18`，请求 key/SKU `ESFAULT20261007`，通过真实 RPC 创建，再按第 1 批方式模拟库存确认；初始价格 44.90 元，上架且可搜索。
+
+随后实际执行 `docker stop grpctest-es-lab-es-1`，让已运行的商品服务无法访问 ES。只停止 ES；MySQL 与商品 RPC 保持运行。故障操作通过真实 RPC 发起，验证脚本在 finally 中启动 ES，确保故障检查失败时也恢复服务。
+
+| 故障期间的操作 | 实际结果 | MySQL 核对 |
+| --- | --- | --- |
+| 修改 ID 18 的名称/价格 | gRPC Internal，更新商品失败 | 名称、44.90 元和原状态均未改变 |
+| 下架 ID 18 | gRPC Internal | `on_sale` 仍为 true |
+| 删除 ID 18 | gRPC Internal，提示查询后重试 | `deleted_at` 仍为空 |
+| 用 `ESFAULT20261007NEW` 新建另一件商品 | gRPC Internal，提示用原请求编号重试 | 商品行和创建请求记录均为 0 条 |
+| 买家 HTTP 搜索 | HTTP 503，`商品服务暂不可用` | 未返回 SQL 搜索结果或空列表伪装成功 |
+
+每次失败后都读取测试商品的 MySQL 字段，并与停机前逐项比较，确认当前事务回滚。新建使用不同请求 key，确保真的尝试创建；重复已完成的旧创建请求不需要重新写 ES，不能用它证明新增故障。
+
+ES 启动并达到 healthy 后，先不重试：MySQL 与 ES 都仍是原名称、44.90 元，搜索重新返回这件商品；失败的新建商品仍不存在。恢复 ES 没有自动执行失败操作。
+
+再手动调用相同的 update RPC，ID 18 改成 `syncrenameprobe 松露礼盒`、39.90 元，ES 对应 3990 分，搜索结果一致。执行 `docker restart grpctest-es-store-goods-rpc` 后，核对 MySQL、ES 的业务字段和 HTTP 响应均与重启前一致，相同 ID 未产生重复文档。演示入口在启动时会从演示库重新写入当前商品；这是该演示入口的全量重写逻辑，不能推断为正式商品服务有自动补偿队列。
+
+恢复后的 off/delete 手动重试也成功。失败的新增请求用原 key `ESFAULT20261007NEW` 重试成功，得到 ID `20`；再次调用同一个创建请求仍返回 ID 20，MySQL 商品行、创建请求记录和 ES 文档各 1 份。ID 19 在回滚中消耗，自动递增 ID 出现间隔正常。
+
+最后通过真实删除 RPC 清理 ID 18、20。MySQL 保留软删除和创建请求记录，ES 文档已移除。原 40、420、旧 16、当前 16 条文档的 ID 与全部业务字段再次核对一致，HTTP 原 16 件商品逐项一致。ES/MySQL/Kibana 均 healthy，演示 RPC 正常运行；本批验证的是实际 HTTP/RPC 返回和存储内容，没有重新操作浏览器页面。
+
+## 怎样重跑故障这一批
+
+先按上文定义 `demo_step`，用新 key 创建并模拟确认，记下新 ID。下列占位 `新ID` 必须替换；每条故障请求预期非零退出，应单独执行，避免脚本的 `set -e` 跳过恢复命令：
+
+```sh
+demo_step -step create -key ESFAULT20261007R2
+demo_step -step ready -key ESFAULT20261007R2 -id 新ID
+docker stop grpctest-es-lab-es-1
+```
+
+ES 停止期间分别尝试：
+
+```sh
+demo_step -step update -key ESFAULT20261007R2 -id 新ID
+demo_step -step off -key ESFAULT20261007R2 -id 新ID
+demo_step -step delete -key ESFAULT20261007R2 -id 新ID
+demo_step -step create -key ESFAULT20261007R2NEW
+curl -i 'http://127.0.0.1:18022/g/v1/store/goods?q=ESFAULT20261007R2A'
+```
+
+每步用上文的 MySQL 查询核对回滚，随后恢复 ES：
+
+```sh
+docker start grpctest-es-lab-es-1
+docker compose -f labs/elasticsearch/compose.yaml start --wait --wait-timeout 120 es
+```
+
+先核对原状态，再重试 update，重启商品 RPC 后核对当前状态：
+
+```sh
+demo_step -step update -key ESFAULT20261007R2 -id 新ID
+docker restart grpctest-es-store-goods-rpc
+```
+
+随后重试 off/delete，以及原失败的新建 key；重复新建要使用完全相同的 key 和请求内容。结束时对所有本次创建的商品执行 delete。ES 写入后先等待刷新或手动 `_refresh`，再对搜索结果作断言。
+
+本机证据在 `.local/es-lab/stage5-recovery/`：各 `failed-*.log`、`failure-evidence.json`、`recovered-before-retry.json`、`retried-update.json`、`after-rpc-restart.json`、`retried-create.json`、`cleanup.json` 和前后商品快照。
+
+## 验收结论与边界
+
+结合前两批的 [隔离同步测试](ES_SYNC.md)、[搜索测试](ES_SEARCH.md) 和 [Bulk 导入验证](../labs/elasticsearch/GOODS_IMPORT.md)，本地阶段 5 已覆盖正常创建/重复同步、连续资料与状态变更、删除、中文检索、组合筛选、稳定分页/空结果、陈旧索引校验、Bulk 部分失败、实际 ES 不可达、恢复后手动重试及进程重启。ES 这一学习主题可以结束，下一主题为链路追踪。
+
+验收没有把 MySQL 和 ES 变成共同事务。ES 请求超时但实际写入成功，或 ES 成功后 MySQL 提交失败，仍可能出现差异；这些情况需查询核对并修复，不能看到错误就断言两边一定都没改。本次实际停机验证的是明确不可达时的失败路径。没有持久同步任务或后台自动重试，直接 SQL/跳过钩子的更新也不会自动同步。
+
+云端配置与服务仍未切换，实际库存确认、上线流程和业务库全量数据需在部署时另行核对。这些部署工作与本地学习验收分开记录。
