@@ -135,6 +135,8 @@ VITE_CATALOG_DEMO=true npm run dev -- --port 3002
 
 ## 验证结果与下一批
 
+2026-10-07 已完成阶段 5 第 1 批的逐步正常流程验收：真实创建 RPC、模拟库存确认、改名改价、下架、删除，每步核对 MySQL/ES/HTTP。详细结果和复现命令见 [ES_ACCEPTANCE.md](ES_ACCEPTANCE.md)。故障恢复与进程重启继续另批验证。
+
 真实 MySQL、ES、gRPC 隔离测试覆盖名称/简介查询、分类后代、品牌/价格/标记过滤、同分稳定排序、正确页偏移、末页和空结果。故意跳过钩子制造陈旧索引后，MySQL 能剔除下架、库存未准备、删除和结构化条件已不匹配的商品，total 保留索引语义，并返回当前价格。缺少 ES 索引时返回 Unavailable，没有 SQL 回退。
 
 浏览器实测搜索、分类、分页、空结果；只暂停演示 RPC 时展示服务错误，恢复后刷新正常。ES 本身未停止。测试入口为 [goods_search_test.go](handler/goods_search_test.go)、[goods_search_integration_test.go](handler/goods_search_integration_test.go)，后者随 [上一批集成命令](ES_SYNC.md#已验证什么) 运行。实际记录位于 `.local/es-lab/store-search/`，Web/前端记录在 Web 仓库 `.local/es-store-search/`。
