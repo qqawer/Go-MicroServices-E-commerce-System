@@ -1,0 +1,32 @@
+name: grpctest-tracing
+services:
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.22.0@sha256:836b967b5abcf1f7758066aa6b348619267a2f1459f72d472840570f9bd88a17
+    ports:
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4318:4318"
+    mem_limit: 512m
+    cpus: 1
+    networks:
+      lab:
+        aliases: [jaeger]
+  goods-rpc:
+    profiles: [demo]
+    container_name: grpctest-es-store-goods-rpc
+    image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+    entrypoint: /goods-rpc
+    command: ["-config", "/demo-config.json"]
+    environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+      OTEL_TRACES_SAMPLER_ARG: "1"
+    ports: ["127.0.0.1:15052:50052"]
+    volumes:
+      - ../../.local/tracing/goods-rpc:/goods-rpc:ro
+      - ../../.local/es-lab/store-search/config.json:/demo-config.json:ro
+    mem_limit: 256m
+    cpus: 1
+    networks: [lab]
+networks:
+  lab:
+    external: true
+    name: grpctest-es-lab_lab

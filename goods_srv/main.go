@@ -10,6 +10,7 @@ import (
 	"grpctest/goods_srv/initialize"
 	"grpctest/goods_srv/model/proto"
 	"grpctest/goods_srv/utils"
+	"grpctest/internal/tracing"
 	invproto "grpctest/inventory_srv/model/proto"
 	"net"
 	"os"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	// "github.com/satori/go.uuid"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -30,6 +32,11 @@ func main() {
 
 	//初始化
 	initialize.InitLogger()
+	shutdownTracing, err := tracing.Init("goods-srv")
+	if err != nil {
+		panic(err)
+	}
+	defer shutdownTracing()
 	initialize.InitConfig()
 	initialize.InitDB()
 	if err := initialize.InitES(global.ServerConfig.Elasticsearch); err != nil {
@@ -57,7 +64,7 @@ func main() {
 		panic(err)
 	}
 	defer inventoryConn.Close()
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	defer server.Stop()
 	proto.RegisterGoodsServer(server, &handler.GoodsServer{Inventory: invproto.NewInventoryClient(inventoryConn)})
 	// lis,err:=net.Listen("tcp", "0.0.0.0:8088")

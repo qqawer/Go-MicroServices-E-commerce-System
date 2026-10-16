@@ -13,9 +13,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"grpctest/goods_srv/global"
 	"grpctest/goods_srv/model"
 	"grpctest/goods_srv/model/proto"
+	"grpctest/internal/tracing"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -26,7 +30,9 @@ import (
 // ES paginates candidates; MySQL checks the current product state. Total is the
 // index's hit count, so a page may shrink after this check. SearchIndex makes
 // that contract explicit to the Web and storefront instead of claiming a SQL count.
-func searchStoreGoods(ctx context.Context, req *proto.GoodsFilterRequest) (*proto.GoodsListResponse, error) {
+func searchStoreGoods(ctx context.Context, req *proto.GoodsFilterRequest) (_ *proto.GoodsListResponse, resultErr error) {
+	ctx, span := otel.Tracer("grpctest/goods").Start(ctx, "goods.search")
+	defer func() { tracing.End(span, resultErr) }()
 	keyword := strings.TrimSpace(req.KeyWords)
 	if req.Pages < 0 || req.PagePerNums < 0 || req.PriceMin < 0 || req.PriceMax < 0 || req.Brand < 0 || req.TopCategory < 0 ||
 		utf8.RuneCountInString(keyword) > 100 || (req.PriceMax > 0 && req.PriceMin > req.PriceMax) {
@@ -117,23 +123,9 @@ func searchStoreGoods(ctx context.Context, req *proto.GoodsFilterRequest) (*prot
 	}
 	searchCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	httpReq, err := http.NewRequestWithContext(searchCtx, http.MethodPost,
-		"/"+global.EsIndex+"/_search?allow_partial_search_results=false", bytes.NewReader(body))
+	data, err := querySearchES(searchCtx, body)
 	if err != nil {
 		return nil, searchGoodsError(searchCtx, err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	res, err := global.EsClient.Perform(httpReq)
-	if err != nil {
-		return nil, searchGoodsError(searchCtx, err)
-	}
-	defer res.Body.Close()
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, searchGoodsError(searchCtx, err)
-	}
-	if res.StatusCode != http.StatusOK {
-		return nil, searchGoodsError(searchCtx, fmt.Errorf("ES search HTTP %d", res.StatusCode))
 	}
 	var result struct {
 		TimedOut bool                 `json:"timed_out"`
@@ -171,7 +163,11 @@ func searchStoreGoods(ctx context.Context, req *proto.GoodsFilterRequest) (*prot
 		return response, nil // Never let an empty ID slice remove the SQL predicate.
 	}
 	var goods []model.Goods
-	if err := db.Where("id IN ?", ids).Preload("Category").Preload("Brands").Find(&goods).Error; err != nil {
+	dbCtx, dbSpan := otel.Tracer("grpctest/goods").Start(ctx, "mysql.goods.read",
+		trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(attribute.String("db.system", "mysql")))
+	err = db.WithContext(dbCtx).Where("id IN ?", ids).Preload("Category").Preload("Brands").Find(&goods).Error
+	tracing.End(dbSpan, err)
+	if err != nil {
 		return nil, storeGoodsListError(ctx, err)
 	}
 	byID := make(map[int32]model.Goods, len(goods))
@@ -185,6 +181,32 @@ func searchStoreGoods(ctx context.Context, req *proto.GoodsFilterRequest) (*prot
 		}
 	}
 	return response, nil
+}
+
+// This span measures ES request/response I/O, without recording search text.
+func querySearchES(ctx context.Context, body []byte) (_ []byte, resultErr error) {
+	ctx, span := otel.Tracer("grpctest/goods").Start(ctx, "elasticsearch.search",
+		trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(attribute.String("db.system", "elasticsearch")))
+	defer func() { tracing.End(span, resultErr) }()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		"/"+global.EsIndex+"/_search?allow_partial_search_results=false", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := global.EsClient.Perform(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ES search HTTP %d", res.StatusCode)
+	}
+	return data, nil
 }
 
 func searchGoodsError(ctx context.Context, err error) error {

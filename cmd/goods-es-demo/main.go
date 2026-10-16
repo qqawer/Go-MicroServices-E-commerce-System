@@ -19,7 +19,9 @@ import (
 	"grpctest/goods_srv/initialize"
 	"grpctest/goods_srv/model"
 	"grpctest/goods_srv/model/proto"
+	"grpctest/internal/tracing"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"gorm.io/gorm"
 )
@@ -27,6 +29,11 @@ import (
 func main() {
 	path := flag.String("config", "", "local demo service JSON")
 	flag.Parse()
+	shutdownTracing, err := tracing.Init("goods-srv")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer shutdownTracing()
 	body, err := os.ReadFile(*path)
 	if err != nil {
 		log.Fatal(err)
@@ -61,7 +68,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	proto.RegisterGoodsServer(server, &handler.GoodsServer{})
 	go func() {
 		if err := server.Serve(lis); err != nil {
