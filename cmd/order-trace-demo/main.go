@@ -3,10 +3,12 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"net"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"grpctest/internal/mqruntime"
 	"grpctest/internal/tracing"
@@ -23,11 +25,13 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	async := flag.Bool("async", false, "enable lab timeout consumer and outbox dispatcher")
+	flag.Parse()
+	if err := run(*async); err != nil {
 		log.Fatal(err)
 	}
 }
-func run() error {
+func run(async bool) error {
 	shutdown, err := tracing.Init("order-srv")
 	if err != nil {
 		return err
@@ -42,8 +46,24 @@ func run() error {
 		return err
 	}
 	defer closeDB()
-	if err := global.DB.AutoMigrate(&model.ShoppingCart{}, &model.OrderInfo{}, &model.OrderGoods{}, &model.OrderTransaction{}, &model.OrderEvent{}); err != nil {
-		return err
+	if async {
+		global.ServerConfig.MqInfo.OrderTTLSeconds = 30
+		// Demo payments are disabled; the dispatcher only reads this empty guard table.
+		if err := global.DB.Exec("CREATE TABLE IF NOT EXISTS order_payment (id BIGINT PRIMARY KEY AUTO_INCREMENT, order_sn VARCHAR(200), review BOOLEAN DEFAULT FALSE, status VARCHAR(20), UNIQUE KEY uq_trace_payment_order(order_sn))").Error; err != nil {
+			return err
+		}
+	}
+	for _, table := range []any{&model.ShoppingCart{}, &model.OrderInfo{}, &model.OrderGoods{}, &model.OrderTransaction{}, &model.OrderEvent{}} {
+		if !global.DB.Migrator().HasTable(table) {
+			if err := global.DB.AutoMigrate(table); err != nil {
+				return err
+			}
+		}
+	}
+	if !global.DB.Migrator().HasColumn(&model.OrderEvent{}, "TraceContext") {
+		if err := global.DB.Migrator().AddColumn(&model.OrderEvent{}, "TraceContext"); err != nil {
+			return err
+		}
 	}
 	for _, ddl := range []string{
 		"ALTER TABLE order_transaction MODIFY request_key VARCHAR(128) NULL",
@@ -67,7 +87,11 @@ func run() error {
 			}
 		}
 	}
-	for offset, qty := range []int32{2, 101, 1} {
+	quantities := []int32{2, 101, 1}
+	if async {
+		quantities = append(quantities, 2, 1, 101, 1)
+	}
+	for offset, qty := range quantities {
 		user := int32(60101 + offset)
 		var intents, carts int64
 		if err := global.DB.Model(&model.OrderTransaction{}).Where("user_id = ?", user).Count(&intents).Error; err != nil {
@@ -111,7 +135,13 @@ func run() error {
 	}
 	defer transactions.Shutdown()
 	global.MQOrder, global.MQInventory, global.MQTransactions = events, events, transactions
-	// This demo exercises the synchronous callback only; no recovery/timeout consumers.
+	if async {
+		cleanup, err := startAsync()
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+	}
 	lis, err := net.Listen("tcp", ":50054")
 	if err != nil {
 		return err
@@ -129,4 +159,33 @@ func run() error {
 	<-ctx.Done()
 	server.GracefulStop()
 	return nil
+}
+
+// Deliberately omit RecoverOrders here: verification must prove delivery through MQ,
+// rather than let the fallback RPC release stock before a consumer receives it.
+func startAsync() (func(), error) {
+	consumer, err := mqruntime.Consumer(global.ServerConfig.MqInfo, "trace-order-timeout", "order_timeout", handler.TimeOutReback)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			cycle, stop := context.WithTimeout(ctx, 15*time.Second)
+			if err := handler.DispatchOrderEvents(cycle, 100); err != nil && ctx.Err() == nil {
+				log.Print("lab outbox pending: ", err)
+			}
+			stop()
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	return func() { cancel(); <-done; _ = consumer.Shutdown() }, nil
 }

@@ -99,7 +99,9 @@ func (i *InventoryServer) Sell(ctx context.Context, req *proto.SellInfo) (_ *emp
 
 // Reback uses the stored snapshot, never caller-provided quantities as refund authority.
 // A missing order is durably cancelled, fencing a Sell that arrives later.
-func (i *InventoryServer) Reback(ctx context.Context, req *proto.SellInfo) (*emptypb.Empty, error) {
+func (i *InventoryServer) Reback(ctx context.Context, req *proto.SellInfo) (_ *emptypb.Empty, resultErr error) {
+	ctx, span := otel.Tracer("grpctest/inventory").Start(ctx, "inventory.reback")
+	defer func() { tracing.End(span, resultErr) }()
 	if !orderNumber.MatchString(req.GetOrderSn()) {
 		return nil, status.Error(codes.InvalidArgument, "订单号无效")
 	}
@@ -111,7 +113,8 @@ func (i *InventoryServer) Reback(ctx context.Context, req *proto.SellInfo) (*emp
 			return nil, err
 		}
 	}
-	err = global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	dbCtx, dbSpan := otel.Tracer("grpctest/inventory").Start(ctx, "mysql.inventory.release", trace.WithSpanKind(trace.SpanKindClient))
+	err = global.DB.WithContext(dbCtx).Transaction(func(tx *gorm.DB) error {
 		record, err := claimStock(tx, req.OrderSn, model.GoodsDetailList{})
 		if err != nil {
 			return err
@@ -148,6 +151,7 @@ func (i *InventoryServer) Reback(ctx context.Context, req *proto.SellInfo) (*emp
 		}
 		return tx.Model(&model.StockSellDetail{}).Where("order_sn = ?", req.OrderSn).Update("status", stockReleased).Error
 	})
+	tracing.End(dbSpan, err)
 	if err != nil {
 		return nil, inventoryDBError(ctx, err)
 	}
@@ -239,17 +243,20 @@ func (i *InventoryServer) GetStockOperation(ctx context.Context, req *proto.Stoc
 // AutoReback shares the RPC refund transaction and acknowledges the entire batch only after commit.
 func AutoReback(ctx context.Context, msgs ...*primitive.MessageExt) (consumer.ConsumeResult, error) {
 	for _, msg := range msgs {
-		var order struct{ OrderSn string }
-		if msg == nil {
-			return consumer.ConsumeRetryLater, nil
-		}
-		if err := json.Unmarshal(msg.Body, &order); err != nil || !orderNumber.MatchString(order.OrderSn) {
-			zap.S().Errorw("返库消息格式无效，保留重试", "message_id", msg.MsgId)
-			return consumer.ConsumeRetryLater, nil
-		}
-		requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_, err := (&InventoryServer{}).Reback(requestCtx, &proto.SellInfo{OrderSn: order.OrderSn})
-		cancel()
+		err := tracing.ProcessMessage(ctx, msg, "order-reback", func(ctx context.Context) error {
+			var order struct{ OrderSn string }
+			if msg == nil {
+				return errors.New("missing inventory release message")
+			}
+			if err := json.Unmarshal(msg.Body, &order); err != nil || !orderNumber.MatchString(order.OrderSn) {
+				zap.S().Errorw("返库消息格式无效，保留重试", "message_id", msg.MsgId)
+				return errors.New("invalid inventory release message")
+			}
+			requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			_, err := (&InventoryServer{}).Reback(requestCtx, &proto.SellInfo{OrderSn: order.OrderSn})
+			return err
+		})
 		if err != nil {
 			return consumer.ConsumeRetryLater, nil
 		}

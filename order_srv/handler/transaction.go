@@ -7,6 +7,11 @@ import (
 	"regexp"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"grpctest/internal/tracing"
+
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -68,7 +73,7 @@ func addOrderEvent(tx *gorm.DB, number, topic string, delay int) error {
 	if err != nil {
 		return err
 	}
-	event := model.OrderEvent{OrderSn: number, Topic: topic, Body: string(body), DelayLevel: delay}
+	event := model.OrderEvent{OrderSn: number, Topic: topic, Body: string(body), DelayLevel: delay, TraceContext: tracing.Properties(tx.Statement.Context)}
 	return tx.Clauses(clause.OnConflict{DoUpdates: clause.AssignmentColumns([]string{"order_sn"})}).Create(&event).Error
 }
 
@@ -107,17 +112,23 @@ func publishOrderEvent(ctx context.Context, number, topic string) error {
 		if producer == nil {
 			return status.Error(codes.Unavailable, "消息生产者尚未就绪")
 		}
+		sendCtx := tracing.PropertiesContext(requestCtx, event.TraceContext)
+		sendCtx, span := otel.Tracer("grpctest/order").Start(sendCtx, "rocketmq.send "+topic,
+			trace.WithSpanKind(trace.SpanKindProducer),
+			trace.WithAttributes(attribute.String("messaging.system", "rocketmq"), attribute.String("messaging.destination.name", topic)))
 		msg := primitive.NewMessage(topic, []byte(event.Body))
+		tracing.InjectMessage(sendCtx, msg)
 		msg.WithKeys([]string{number})
 		if event.DelayLevel > 0 {
 			msg.WithDelayTimeLevel(event.DelayLevel)
 		}
-		response, err := producer.SendSync(requestCtx, msg)
+		response, err := producer.SendSync(sendCtx, msg)
+		if err == nil && (response == nil || response.Status != primitive.SendOK) {
+			err = errors.New("broker did not confirm message storage")
+		}
+		tracing.End(span, err)
 		if err != nil {
 			return err
-		}
-		if response == nil || response.Status != primitive.SendOK {
-			return errors.New("broker did not confirm message storage")
 		}
 		return tx.Model(&model.OrderEvent{}).Where("id = ?", event.ID).Update("published", true).Error
 	})
@@ -152,7 +163,9 @@ func DispatchOrderEvents(ctx context.Context, limit int) error {
 
 // Demo close and refund intent commit atomically. Alipay first persists CLOSING,
 // then confirms the channel result outside the database transaction.
-func closeOrder(ctx context.Context, number string) (bool, error) {
+func closeOrder(ctx context.Context, number string) (_ bool, resultErr error) {
+	ctx, span := otel.Tracer("grpctest/order").Start(ctx, "order.close")
+	defer func() { tracing.End(span, resultErr) }()
 	refund, reconcile := false, false
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var order model.OrderInfo

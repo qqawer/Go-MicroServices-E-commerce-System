@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	otelcodes "go.opentelemetry.io/otel/codes"
 
+	"grpctest/internal/tracing"
 	"grpctest/order_srv/global"
 	"grpctest/order_srv/model"
 	"grpctest/order_srv/proto"
@@ -215,7 +216,7 @@ func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitiv
 		o.Detail = detail
 		// The caller may have timed out while Sell committed. Persist cancellation using
 		// a separate bounded context, so the compensation also fences a late Sell.
-		decisionCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
+		decisionCtx, done := context.WithTimeout(tracing.MessageContext(context.Background(), msg), 5*time.Second)
 		defer done()
 		return cancelOrderMessage(decisionCtx, order.OrderSn)
 	}
@@ -270,7 +271,7 @@ func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitiv
 		return tx.Model(&model.OrderTransaction{}).Where("order_sn = ?", order.OrderSn).Update("state", model.OrderCommitted).Error
 	})
 	if err != nil {
-		decisionCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
+		decisionCtx, done := context.WithTimeout(tracing.MessageContext(context.Background(), msg), 5*time.Second)
 		defer done()
 		// Commit acknowledgment may be lost. The durable decision determines whether to compensate.
 		state, e := orderDecision(decisionCtx, order.OrderSn, true)
@@ -300,7 +301,7 @@ func (o *OrderListener) CheckLocalTransaction(msg *primitive.MessageExt) primiti
 	if msg == nil || json.Unmarshal(msg.Body, &order) != nil || !validOrderSN.MatchString(order.OrderSn) {
 		return primitive.UnkonwnState
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(tracing.MessageContext(context.Background(), &msg.Message), 5*time.Second)
 	defer cancel()
 	// Checking a preparing/missing operation durably cancels it. The execution path
 	// locks the same decision before writing an order, so a late commit cannot resurrect it.
@@ -438,16 +439,19 @@ func (O *OrderServer) UpdateOrderStatus(ctx context.Context, req *proto.OrderSta
 
 func TimeOutReback(ctx context.Context, msgs ...*primitive.MessageExt) (consumer.ConsumeResult, error) {
 	for _, msg := range msgs {
-		var order struct{ OrderSn string }
-		if msg == nil || json.Unmarshal(msg.Body, &order) != nil || !validOrderSN.MatchString(order.OrderSn) {
-			return consumer.ConsumeRetryLater, nil
-		}
-		requestCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		refund, err := closeOrder(requestCtx, order.OrderSn)
-		if err == nil && refund {
-			err = publishOrderEvent(requestCtx, order.OrderSn, "order-reback")
-		}
-		cancel()
+		err := tracing.ProcessMessage(ctx, msg, "order_timeout", func(ctx context.Context) error {
+			var order struct{ OrderSn string }
+			if msg == nil || json.Unmarshal(msg.Body, &order) != nil || !validOrderSN.MatchString(order.OrderSn) {
+				return errors.New("invalid timeout message")
+			}
+			requestCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			refund, err := closeOrder(requestCtx, order.OrderSn)
+			if err == nil && refund {
+				err = publishOrderEvent(requestCtx, order.OrderSn, "order-reback")
+			}
+			return err
+		})
 		if err != nil {
 			return consumer.ConsumeRetryLater, nil
 		}

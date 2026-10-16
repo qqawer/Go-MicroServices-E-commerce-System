@@ -2,7 +2,7 @@
 
 2026-10-16 第一批：参照 mxshop 的 HTTP 中间件、gRPC 两端埋点和业务 Span 分层，接通本地商品搜索。mxshop 的旧 OpenTracing / `jaeger-client-go` 已弃用；这里使用 OpenTelemetry SDK 1.34.0、otelgrpc 0.59.0、OTLP/HTTP 和 Jaeger 2.22.0。SDK 版本与 RPC 仓库原有 OTel API 1.34.0 对齐，属于本轮固定兼容组合，不宣称最新 SDK。
 
-本文保留第一批商品搜索记录。第二批现已接通订单 Web→订单 RPC→商品/库存 RPC，含真实 RocketMQ 同步事务回调，见 [ORDERS.md](ORDERS.md)。异步消费、恢复 worker 和浏览器 JS 尚未接入。
+本文保留第一批商品搜索记录。第二批现已接通订单 Web→订单 RPC→商品/库存 RPC，含真实 RocketMQ 同步事务回调，见 [ORDERS.md](ORDERS.md)。第三批又完成 MQ 异步超时和补偿追踪，详见 [ASYNC.md](ASYNC.md)；恢复 worker 的订单关联和浏览器 JS 不在该批验收范围。
 
 ## 实际链路
 
@@ -114,4 +114,4 @@ python3 labs/tracing/verify.py success --propagate
 - [传播](https://opentelemetry.io/docs/concepts/context-propagation/)
 - [otelgrpc 0.59.0](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc@v0.59.0)
 
-订单、商品和库存的第二批改造及五个真实场景已完成，参见 [ORDERS.md](ORDERS.md)。后续单独验证 MQ 异步消费和补偿链路；当前不能宣称全部微服务已完成链路追踪。
+订单、商品和库存的第二批改造及五个真实场景已完成，参见 [ORDERS.md](ORDERS.md)。第三批异步消费、超时和补偿的实际验收见 [ASYNC.md](ASYNC.md)。当前不能宣称全部微服务及后台任务已完成链路追踪。

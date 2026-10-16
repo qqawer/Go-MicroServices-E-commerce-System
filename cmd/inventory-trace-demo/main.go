@@ -3,8 +3,10 @@ package main
 
 import (
 	"context"
+	"flag"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"grpctest/internal/mqruntime"
 	"grpctest/internal/tracing"
 	"grpctest/inventory_srv/config"
 	"grpctest/inventory_srv/global"
@@ -19,11 +21,13 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	async := flag.Bool("async", false, "enable the lab inventory release consumer")
+	flag.Parse()
+	if err := run(*async); err != nil {
 		log.Fatal(err)
 	}
 }
-func run() error {
+func run(async bool) error {
 	shutdown, err := tracing.Init("inventory-srv")
 	if err != nil {
 		return err
@@ -51,6 +55,17 @@ func run() error {
 		if err := global.DB.Create(&model.Inventory{Goods: 1, Stocks: 100}).Error; err != nil {
 			return err
 		}
+	}
+	if async {
+		cfg := mqruntime.Config{Enabled: true, Host: "trace-namesrv", Port: 9876}
+		if err := mqruntime.WaitTopics(context.Background(), cfg, "order-reback"); err != nil {
+			return err
+		}
+		consumer, err := mqruntime.Consumer(cfg, "trace-inventory-reback", "order-reback", handler.AutoReback)
+		if err != nil {
+			return err
+		}
+		defer consumer.Shutdown()
 	}
 	lis, err := net.Listen("tcp", ":50053")
 	if err != nil {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only parentage/privacy checks for a local order Trace already in Jaeger."""
+"""Read-only checks of the synchronous subset of an order Trace already in Jaeger."""
 import argparse
 import json
 from pathlib import Path
@@ -13,6 +13,9 @@ parser.add_argument('trace_id', help='X-Trace-ID from POST /trace-demo/orders')
 args = parser.parse_args()
 assert len(args.trace_id) == 32 and all(c in '0123456789abcdef' for c in args.trace_id)
 count = {'replay': 5, 'goods-unavailable': 6}.get(args.scenario, 14)
+core_names = {"POST /trace-demo/orders", "Order/CreateOrder", "order.create", "order.prepare",
+              "Goods/BatchGetGoods", "mysql.goods.batch_read", "rocketmq.order.prepare",
+              "order.transaction", "Inventory/Sell", "inventory.sell", "mysql.inventory.reserve"}
 spans = []
 for _ in range(30):
     try:
@@ -24,13 +27,15 @@ for _ in range(30):
                 service = next(a['value']['stringValue'] for a in resource['resource']['attributes'] if a['key'] == 'service.name')
                 for scope in resource.get('scopeSpans', []):
                     spans.extend(dict(s, service=service) for s in scope.get('spans', []))
-        if len(spans) == count:
+        if sum(s["name"] in core_names for s in spans) == count:
             break
     except urllib.error.HTTPError as err:
         if err.code != 404:
             raise
     time.sleep(.5)
-assert len(spans) == count, ('missing/unexpected spans', len(spans), count)
+all_spans = spans
+spans = [s for s in all_spans if s['name'] in core_names]
+assert len(spans) == count, ('missing/unexpected synchronous spans', len(spans), count)
 by_key = {(s['service'], s['name']): s for s in spans}
 assert len(by_key) == count, 'duplicate operations'
 expected = [
@@ -72,5 +77,5 @@ else:
     assert not errors
 out = Path(__file__).resolve().parents[2] / '.local/tracing/orders'
 out.mkdir(parents=True, exist_ok=True)
-(out / (args.scenario + '-verified.json')).write_text(json.dumps({'scenario': args.scenario, 'trace_id': args.trace_id, 'spans': spans}, ensure_ascii=False, indent=2))
-print(json.dumps({'scenario': args.scenario, 'spans': count, 'services': sorted({s['service'] for s in spans}), 'error_spans': len(errors), 'jaeger_url': 'http://127.0.0.1:16686/trace/' + args.trace_id}, ensure_ascii=False))
+(out / (args.scenario + '-verified.json')).write_text(json.dumps({'scenario': args.scenario, 'trace_id': args.trace_id, 'spans': spans, 'all_spans': all_spans}, ensure_ascii=False, indent=2))
+print(json.dumps({'scenario': args.scenario, 'synchronous_spans': count, 'total_spans': len(all_spans), 'services': sorted({s['service'] for s in spans}), 'error_spans': len(errors), 'jaeger_url': 'http://127.0.0.1:16686/trace/' + args.trace_id}, ensure_ascii=False))

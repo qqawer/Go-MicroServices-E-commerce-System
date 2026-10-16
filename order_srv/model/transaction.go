@@ -34,6 +34,7 @@ type OrderEvent struct {
 	Published     bool
 	CreatedAt     time.Time
 	LastAttemptAt *time.Time
+	TraceContext  map[string]string `gorm:"serializer:json;type:json"`
 }
 
 func (OrderEvent) TableName() string { return "order_event" }
