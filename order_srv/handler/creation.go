@@ -6,6 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+	"grpctest/internal/tracing"
 	"math"
 	"regexp"
 	"sort"
@@ -39,7 +42,7 @@ type creationSnapshot struct {
 type TransactionListener struct{}
 
 func (*TransactionListener) ExecuteLocalTransaction(msg *primitive.Message) primitive.LocalTransactionState {
-	return (&OrderListener{}).ExecuteLocalTransaction(msg)
+	return (&OrderListener{Ctx: tracing.MessageContext(context.Background(), msg)}).ExecuteLocalTransaction(msg)
 }
 func (*TransactionListener) CheckLocalTransaction(msg *primitive.MessageExt) primitive.LocalTransactionState {
 	return (&OrderListener{}).CheckLocalTransaction(msg)
@@ -98,7 +101,9 @@ func loadCreation(ctx context.Context, user int32, key string) (model.OrderTrans
 	return record, err
 }
 
-func prepareCreation(ctx context.Context, req *proto.OrderRequest) (model.OrderTransaction, error) {
+func prepareCreation(ctx context.Context, req *proto.OrderRequest) (_ model.OrderTransaction, resultErr error) {
+	ctx, span := otel.Tracer("grpctest/order").Start(ctx, "order.prepare")
+	defer func() { tracing.End(span, resultErr) }()
 	record, err := loadCreation(ctx, req.UserId, req.RequestKey)
 	hash := requestHash(req)
 	if err == nil {
@@ -259,7 +264,9 @@ const (
 	reviewedCreation
 )
 
-func (o *OrderServer) createOrder(ctx context.Context, req *proto.OrderRequest, mode creationMode) (*proto.OrderInfoResponse, error) {
+func (o *OrderServer) createOrder(ctx context.Context, req *proto.OrderRequest, mode creationMode) (_ *proto.OrderInfoResponse, resultErr error) {
+	ctx, span := otel.Tracer("grpctest/order").Start(ctx, "order.create")
+	defer func() { tracing.End(span, resultErr) }()
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
 	}
@@ -299,7 +306,10 @@ func (o *OrderServer) createOrder(ctx context.Context, req *proto.OrderRequest, 
 		msg.WithKeys([]string{record.OrderSn})
 		// A lost send response cannot prove the half message or local transaction failed.
 		// Read the decision; pending intents are fenced and compensated by recovery.
-		_, _ = global.MQTransactions.SendMessageInTransaction(ctx, msg)
+		mqCtx, mqSpan := otel.Tracer("grpctest/order").Start(ctx, "rocketmq.order.prepare", trace.WithSpanKind(trace.SpanKindProducer))
+		tracing.InjectMessage(mqCtx, msg)
+		_, sendErr := global.MQTransactions.SendMessageInTransaction(mqCtx, msg)
+		tracing.End(mqSpan, sendErr)
 		record, err = loadCreation(ctx, req.UserId, req.RequestKey)
 		if err != nil {
 			return nil, creationError(ctx, err)

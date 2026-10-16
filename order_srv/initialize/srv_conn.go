@@ -14,6 +14,7 @@ import (
 	"grpctest/order_srv/proto"
 
 	_ "github.com/mbobakov/grpc-consul-resolver"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -42,6 +43,7 @@ func initSrvConn(ctx context.Context, cfg *config.ServerConfig, dial func(contex
 		// 仍需由各次业务 RPC 的结果判断服务是否完成了请求。
 		options := []grpc.DialOption{
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 			grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
 		}
 		if waitReady {

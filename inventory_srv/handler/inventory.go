@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+	"grpctest/internal/tracing"
 	"math"
 	"regexp"
 	"sort"
@@ -38,7 +41,9 @@ const (
 var orderNumber = regexp.MustCompile(`^[A-Za-z0-9_-]{1,200}$`)
 
 // Sell records the order and all stock changes in the same transaction.
-func (i *InventoryServer) Sell(ctx context.Context, req *proto.SellInfo) (*emptypb.Empty, error) {
+func (i *InventoryServer) Sell(ctx context.Context, req *proto.SellInfo) (_ *emptypb.Empty, resultErr error) {
+	ctx, span := otel.Tracer("grpctest/inventory").Start(ctx, "inventory.sell")
+	defer func() { tracing.End(span, resultErr) }()
 	if !orderNumber.MatchString(req.GetOrderSn()) {
 		return nil, status.Error(codes.InvalidArgument, "订单号无效")
 	}
@@ -46,7 +51,8 @@ func (i *InventoryServer) Sell(ctx context.Context, req *proto.SellInfo) (*empty
 	if err != nil {
 		return nil, err
 	}
-	err = global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	dbCtx, dbSpan := otel.Tracer("grpctest/inventory").Start(ctx, "mysql.inventory.reserve", trace.WithSpanKind(trace.SpanKindClient))
+	err = global.DB.WithContext(dbCtx).Transaction(func(tx *gorm.DB) error {
 		record, err := claimStock(tx, req.OrderSn, detail)
 		if err != nil {
 			return err
@@ -84,6 +90,7 @@ func (i *InventoryServer) Sell(ctx context.Context, req *proto.SellInfo) (*empty
 		}
 		return tx.Model(&model.StockSellDetail{}).Where("order_sn = ?", req.OrderSn).Update("status", stockReserved).Error
 	})
+	tracing.End(dbSpan, err)
 	if err != nil {
 		return nil, inventoryDBError(ctx, err)
 	}

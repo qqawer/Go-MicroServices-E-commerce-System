@@ -3,6 +3,9 @@ package handler
 import (
 	"context"
 	"errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+	"grpctest/internal/tracing"
 
 	"grpctest/goods_srv/global"
 	"grpctest/goods_srv/model"
@@ -146,7 +149,9 @@ func storeGoodsListError(ctx context.Context, err error) error {
 }
 
 // BatchGetGoods 查询多个商品信息
-func (s *GoodsServer) BatchGetGoods(ctx context.Context, req *proto.BatchGoodsIdInfo) (*proto.GoodsListResponse, error) {
+func (s *GoodsServer) BatchGetGoods(ctx context.Context, req *proto.BatchGoodsIdInfo) (_ *proto.GoodsListResponse, resultErr error) {
+	ctx, span := otel.Tracer("grpctest/goods").Start(ctx, "mysql.goods.batch_read", trace.WithSpanKind(trace.SpanKindClient))
+	defer func() { tracing.End(span, resultErr) }()
 	if req == nil || len(req.Id) > 1000 {
 		return nil, status.Error(codes.InvalidArgument, "一次最多查询 1000 个商品")
 	}

@@ -9,7 +9,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
+	"go.opentelemetry.io/otel"
+	otelcodes "go.opentelemetry.io/otel/codes"
 
 	"grpctest/order_srv/global"
 	"grpctest/order_srv/model"
@@ -176,8 +177,13 @@ func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitiv
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	span, ctx := opentracing.StartSpanFromContext(ctx, "order_transaction")
-	defer span.Finish()
+	ctx, span := otel.Tracer("grpctest/order").Start(ctx, "order.transaction")
+	defer func() {
+		if o.Code != codes.OK {
+			span.SetStatus(otelcodes.Error, "order transaction not committed")
+		}
+		span.End()
+	}()
 	o.Code = codes.Internal
 	var order model.OrderInfo
 	if msg == nil || json.Unmarshal(msg.Body, &order) != nil || !validOrderSN.MatchString(order.OrderSn) || order.User <= 0 {

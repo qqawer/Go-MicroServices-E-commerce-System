@@ -1,0 +1,47 @@
+name: grpctest-tracing-orders
+services:
+  namesrv:
+    image: apache/rocketmq:5.5.0@sha256:7e8f6c9dbd9df742ed26ba69c00d4ad69e2f86a56f3ca7782ff8144dd0798132
+    command: ["sh", "mqnamesrv"]
+    environment:
+      JAVA_OPT_EXT: -Xms128m -Xmx128m -Xmn64m
+    mem_limit: 256m
+    networks:
+      lab:
+        aliases: [trace-namesrv]
+  broker:
+    image: apache/rocketmq:5.5.0@sha256:7e8f6c9dbd9df742ed26ba69c00d4ad69e2f86a56f3ca7782ff8144dd0798132
+    command: ["sh", "mqbroker", "-c", "/home/rocketmq/broker.conf"]
+    environment:
+      JAVA_OPT_EXT: -Xms256m -Xmx512m -Xmn128m -XX:MaxDirectMemorySize=128m
+    volumes: ["./broker.conf:/home/rocketmq/broker.conf:ro"]
+    mem_limit: 1g
+    networks:
+      lab:
+        aliases: [trace-broker]
+  inventory:
+    image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+    entrypoint: /inventory-rpc
+    environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+      OTEL_TRACES_SAMPLER_ARG: "1"
+    volumes: ["../../.local/tracing/orders/inventory-rpc:/inventory-rpc:ro"]
+    mem_limit: 256m
+    ports: ["127.0.0.1:15053:50053"]
+    networks:
+      lab:
+        aliases: [trace-inventory]
+  order:
+    image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+    entrypoint: /order-rpc
+    environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
+      OTEL_TRACES_SAMPLER_ARG: "1"
+    volumes: ["../../.local/tracing/orders/order-rpc:/order-rpc:ro"]
+    mem_limit: 256m
+    ports: ["127.0.0.1:15054:50054"]
+    networks: [lab]
+networks:
+  lab:
+    external: true
+    name: grpctest-es-lab_lab

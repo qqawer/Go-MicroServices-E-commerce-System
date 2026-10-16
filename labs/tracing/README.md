@@ -2,7 +2,7 @@
 
 2026-10-16 第一批：参照 mxshop 的 HTTP 中间件、gRPC 两端埋点和业务 Span 分层，接通本地商品搜索。mxshop 的旧 OpenTracing / `jaeger-client-go` 已弃用；这里使用 OpenTelemetry SDK 1.34.0、otelgrpc 0.59.0、OTLP/HTTP 和 Jaeger 2.22.0。SDK 版本与 RPC 仓库原有 OTel API 1.34.0 对齐，属于本轮固定兼容组合，不宣称最新 SDK。
 
-本批仅接商品 Web/RPC 和搜索内部依赖。原 order handler 存在一个未配置有效 Tracer 的 OpenTracing Span，订单、库存、MQ 和浏览器 JS 还未接入本轮 OTel Trace。
+本文保留第一批商品搜索记录。第二批现已接通订单 Web→订单 RPC→商品/库存 RPC，含真实 RocketMQ 同步事务回调，见 [ORDERS.md](ORDERS.md)。异步消费、恢复 worker 和浏览器 JS 尚未接入。
 
 ## 实际链路
 
@@ -76,7 +76,7 @@ OTEL_TRACES_SAMPLER_ARG=1 .local/tracing/goods-web
 - 显式端点启用后，根 Trace 默认采样率 0.1；`OTEL_TRACES_SAMPLER_ARG=1` 为本地教学全采样。ParentBased 会沿用传入父级的采样决定，不能用此配置覆盖一个未采样的父级。
 - 批处理队列是有界内存队列，满时可丢追踪；导出超时 2 秒、本轮不做导出重试。正常关闭给 Flush 最多 5 秒。它们是追踪可靠性和开销的取舍，不是业务事务机制。
 
-生产入口只在商品进程启动时初始化一次。没有修改云端 Nacos 或部署配置。此处环境变量初始化只处理明确列出的设置，不等同于支持全部 OTel 自动配置变量。
+各已接入的生产入口在进程启动时初始化一次。没有修改云端 Nacos 或部署配置。此处环境变量初始化只处理明确列出的设置，不等同于支持全部 OTel 自动配置变量。
 
 ## 验证与读图
 
@@ -114,4 +114,4 @@ python3 labs/tracing/verify.py success --propagate
 - [传播](https://opentelemetry.io/docs/concepts/context-propagation/)
 - [otelgrpc 0.59.0](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc@v0.59.0)
 
-下一批再接订单 Web→订单 RPC→商品/库存 RPC，并核对 MQ 异步边界；当前不能宣称全部微服务已完成链路追踪。
+订单、商品和库存的第二批改造及五个真实场景已完成，参见 [ORDERS.md](ORDERS.md)。后续单独验证 MQ 异步消费和补偿链路；当前不能宣称全部微服务已完成链路追踪。

@@ -1,6 +1,7 @@
 package initialize
 
 import (
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"net"
 	"net/url"
 	"strconv"
@@ -22,5 +23,6 @@ func ConnectInventory(cfg *config.ServerConfig) (*grpc.ClientConn, error) {
 	target := url.URL{Scheme: "consul", Host: net.JoinHostPort(cfg.ConsulInfo.Host, strconv.Itoa(cfg.ConsulInfo.Port)),
 		Path: "/" + name, RawQuery: "wait=14s&timeout=16s&tag=srv&healthy=true"}
 	return grpc.NewClient(target.String(), grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`))
 }

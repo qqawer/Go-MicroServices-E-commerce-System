@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"grpctest/internal/tracing"
 	"grpctest/inventory_srv/global"
 	"grpctest/inventory_srv/handler"
 	"grpctest/inventory_srv/initialize"
@@ -41,6 +43,11 @@ func main() {
 var errShutdownTimeout = errors.New("inventory RPC handlers did not finish within the shutdown grace period")
 
 func run(ctx context.Context, ip string, port int) (err error) {
+	shutdownTracing, err := tracing.Init("inventory-srv")
+	if err != nil {
+		return err
+	}
+	defer shutdownTracing()
 	if port < 0 || port > 65535 {
 		return fmt.Errorf("port must be between 0 and 65535")
 	}
@@ -81,7 +88,7 @@ func run(ctx context.Context, ip string, port int) (err error) {
 }
 
 func serve(ctx context.Context, listener net.Listener, client *api.Client) (err error) {
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	proto.RegisterInventoryServer(server, &handler.InventoryServer{})
 	grpc_health_v1.RegisterHealthServer(server, health.NewServer())
 	defer func() {
