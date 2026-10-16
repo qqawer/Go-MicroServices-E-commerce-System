@@ -1,5 +1,7 @@
 # 商品查询保护，第1批：限流、错误比例熔断和失败提示降级
 
+本文保留第1批参数和实测结果。第2批慢调用熔断与并发隔离已完成，见[ADVANCED.md](ADVANCED.md)。当前本地Web使用slow profile（50QPS、慢阈值200ms、并发2），注入延迟已恢复0；复现下面第1批burst实验前，应重启为basic profile。
+
 2026-10-16。本批只保护买家商品列表 `GET /g/v1/store/goods`，参考mxshop的Sentinel入口和规则，在现有代码加入两个独立资源。RPC业务和索引结构不改，继续使用真实本地Web→商品RPC→ES/MySQL和OTel/Jaeger。源码在同级Web仓库 `goods-web/protection/query.go`，路由集成在 `goods-web/api/goods/goods.go`。
 
 ## 教学规则及响应
@@ -67,4 +69,4 @@ HTTP根Span记录 `protection.result` 为allowed/rate_limited/circuit_open/depen
 
 最终ES为green；原40/420/16/16四个索引的ID及业务字段与基线逐项一致；原合成库存100、订单5笔不变，见 `.local/protection/data-preservation.json`。故障已经恢复，18022继续开启教学保护，3002页面可继续使用，普通手动搜索无需改协议。前端已有429/503固定提示，本轮未进行浏览器点击验收。
 
-本批只有错误比例熔断，没有引入慢调用比例、并发隔离、共享分布式限流、缓存商品降级或控制台。下一批按学习选择补慢调用/并发保护或扩展其他接口，不自动进入API网关或生产切换。
+第1批只验证错误比例熔断。第2批已在同一商品接口补慢调用比例与并发隔离，启动和实测另读ADVANCED.md。共享分布式限流、缓存商品降级、控制台及其他接口尚未扩展，不自动进入API网关或生产切换。

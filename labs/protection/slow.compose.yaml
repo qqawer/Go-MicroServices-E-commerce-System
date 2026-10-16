@@ -1,0 +1,6 @@
+# Optional local fault injection; merge with labs/tracing/compose.yaml.
+services:
+  goods-rpc:
+    command: ["-config", "/demo-config.json", "-query-delay-file", "/lab-query-delay-ms"]
+    volumes:
+      - ../../.local/protection/query-delay-ms:/lab-query-delay-ms:ro

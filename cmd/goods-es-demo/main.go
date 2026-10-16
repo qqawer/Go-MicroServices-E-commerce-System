@@ -28,6 +28,7 @@ import (
 
 func main() {
 	path := flag.String("config", "", "local demo service JSON")
+	delayFile := flag.String("query-delay-file", "", "optional local file containing buyer-query delay in ms (0..5000)")
 	flag.Parse()
 	shutdownTracing, err := tracing.Init("goods-srv")
 	if err != nil {
@@ -68,7 +69,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
+	server := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()), grpc.UnaryInterceptor(labQueryDelay(*delayFile)))
 	proto.RegisterGoodsServer(server, &handler.GoodsServer{})
 	go func() {
 		if err := server.Serve(lis); err != nil {
